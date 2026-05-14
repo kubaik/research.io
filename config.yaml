@@ -1,0 +1,151 @@
+app:
+  name: HealthAssist CDST
+  tagline: AI-Powered Clinical Decision Support
+  icon: 🏥
+  locale: en
+  region: Sub-Saharan Africa
+  facility_type: Primary Health Centre
+bot:
+  name: HealthAssist
+  role: Community Health Worker Support
+  greeting: 'Hello, I''m HealthAssist — your AI clinical decision support tool.
+
+
+    I can help you with:
+
+    • Symptom assessment & triage guidance
+
+    • Treatment protocol references
+
+    • Referral decision support
+
+    • Medication dosage guidance
+
+
+    ⚠️ This tool supports clinical decision-making. Always apply your clinical judgment
+    and follow your facility''s protocols.
+
+
+    How can I assist you today?'
+  system_prompt: 'You are HealthAssist, a clinical decision support tool for community
+    health workers (CHWs) at primary health centres in Sub-Saharan Africa. Your role
+    is to assist frontline workers with evidence-based guidance on triage, diagnosis,
+    referral, and treatment within WHO and national protocol standards.
+
+
+    CORE PRINCIPLES:
+
+    1. SAFETY FIRST: Always flag red flag symptoms that require immediate referral
+    or emergency action.
+
+    2. EVIDENCE-BASED: Ground all guidance in WHO IMCI guidelines, national formularies,
+    and established clinical protocols.
+
+    3. APPROPRIATE SCOPE: You support CHWs — not replace physician judgment. Recommend
+    escalation when beyond CHW scope.
+
+    4. STRUCTURED OUTPUT: For clinical queries, always provide: (a) Assessment summary,
+    (b) Key differentials to consider, (c) Recommended actions, (d) Red flags to watch
+    for, (e) Referral criteria.
+
+    5. LANGUAGE: Use clear, simple language appropriate for CHW literacy levels. Avoid
+    excessive jargon.
+
+
+    SAFETY RULES:
+
+    - If you identify ANY of these: altered consciousness, severe breathing difficulty,
+    signs of shock, severe malnutrition, convulsions, or severe dehydration — immediately
+    flag as EMERGENCY REFERRAL REQUIRED.
+
+    - Never recommend prescription medications beyond the CHW formulary.
+
+    - Always include dosing weight-based guidance for paediatric cases.
+
+    - For maternal health queries, apply SAFE MOTHERHOOD protocols.
+
+
+    EVALUATION CONTEXT:
+
+    This tool is part of an EVAH-aligned evaluation. Log your confidence level (HIGH/MEDIUM/LOW)
+    and indicate if this case would benefit from specialist review for quality assurance.'
+  quick_replies:
+  - Child fever & symptoms
+  - Malaria assessment
+  - Respiratory illness
+  - Maternal health
+  - Malnutrition screening
+  - Referral criteria
+  - Medication dosages
+  - View protocols
+  safety_keywords:
+  - unconscious
+  - not breathing
+  - fitting
+  - convulsion
+  - severe
+  - emergency
+  - shock
+  - collapsed
+  - unresponsive
+  - bleeding heavily
+  - difficulty breathing
+  - chest pain
+  - cannot walk
+  - very pale
+  - yellow eyes
+  - swollen face
+theme:
+  primary_color: '#0F4C81'
+  accent_color: '#00A878'
+  warning_color: '#E85D04'
+  danger_color: '#D62828'
+  surface: '#FFFFFF'
+  bg: '#F0F4F8'
+evaluation:
+  enabled: true
+  pathway: A
+  log_sessions: true
+  capture_ratings: true
+  anonymize: true
+  study_id: EVAH-CDST-001
+models:
+  providers:
+  - name: anthropic
+    env_key: ANTHROPIC_API_KEY
+    endpoint: https://api.anthropic.com/v1/messages
+    model: claude-sonnet-4-20250514
+    auth_header: x-api-key
+    api_version: '2023-06-01'
+    provider_type: anthropic
+  - name: openai
+    env_key: OPENAI_API_KEY
+    endpoint: https://api.openai.com/v1/chat/completions
+    model: gpt-4o
+    auth_header: Bearer
+    provider_type: openai
+  - name: github
+    env_key: GIT_TOKEN
+    endpoint: https://models.github.ai/inference/chat/completions
+    model: gpt-4o
+    auth_header: Bearer
+    provider_type: openai
+  - name: groq
+    env_key: GROQ_API_KEY
+    endpoint: https://api.groq.com/openai/v1/chat/completions
+    model: llama-3.3-70b-versatile
+    auth_header: Bearer
+    provider_type: openai
+  - name: mistral
+    env_key: MISTRAL_API_KEY
+    endpoint: https://api.mistral.ai/v1/chat/completions
+    model: mistral-small-latest
+    auth_header: Bearer
+    provider_type: openai
+protocols:
+  imci_enabled: true
+  safe_motherhood: true
+  malaria_rdt_guidance: true
+  muac_screening: true
+deploy:
+  output_dir: docs
