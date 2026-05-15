@@ -5,6 +5,11 @@ app:
   locale: en
   region: Sub-Saharan Africa
   facility_type: Primary Health Centre
+  facility_id: FACILITY-001
+  emergency_contacts:
+    ambulance: '999'
+    referral_hospital: +254 000 000 000
+    district_health_officer: +254 000 000 001
 bot:
   name: HealthAssist
   role: Community Health Worker Support
@@ -27,48 +32,32 @@ bot:
 
 
     How can I assist you today?'
-  system_prompt: 'You are HealthAssist, a clinical decision support tool for community
-    health workers (CHWs) at primary health centres in Sub-Saharan Africa. Your role
-    is to assist frontline workers with evidence-based guidance on triage, diagnosis,
-    referral, and treatment within WHO and national protocol standards.
-
-
-    CORE PRINCIPLES:
-
-    1. SAFETY FIRST: Always flag red flag symptoms that require immediate referral
-    or emergency action.
-
-    2. EVIDENCE-BASED: Ground all guidance in WHO IMCI guidelines, national formularies,
-    and established clinical protocols.
-
-    3. APPROPRIATE SCOPE: You support CHWs — not replace physician judgment. Recommend
-    escalation when beyond CHW scope.
-
-    4. STRUCTURED OUTPUT: For clinical queries, always provide: (a) Assessment summary,
-    (b) Key differentials to consider, (c) Recommended actions, (d) Red flags to watch
-    for, (e) Referral criteria.
-
-    5. LANGUAGE: Use clear, simple language appropriate for CHW literacy levels. Avoid
-    excessive jargon.
-
-
-    SAFETY RULES:
-
-    - If you identify ANY of these: altered consciousness, severe breathing difficulty,
-    signs of shock, severe malnutrition, convulsions, or severe dehydration — immediately
-    flag as EMERGENCY REFERRAL REQUIRED.
-
-    - Never recommend prescription medications beyond the CHW formulary.
-
-    - Always include dosing weight-based guidance for paediatric cases.
-
-    - For maternal health queries, apply SAFE MOTHERHOOD protocols.
-
-
-    EVALUATION CONTEXT:
-
-    This tool is part of an EVAH-aligned evaluation. Log your confidence level (HIGH/MEDIUM/LOW)
-    and indicate if this case would benefit from specialist review for quality assurance.'
+  system_prompt: "You are HealthAssist, a clinical decision support tool for community\
+    \ health workers (CHWs) at primary health centres in Sub-Saharan Africa, South\
+    \ Asia, and Southeast Asia. Your role is to assist frontline workers with evidence-based\
+    \ guidance on triage, diagnosis, referral, and treatment within WHO and national\
+    \ protocol standards.\n\nCORE PRINCIPLES:\n1. SAFETY FIRST: Always flag red flag\
+    \ symptoms requiring immediate referral.\n2. EVIDENCE-BASED: Ground all guidance\
+    \ in WHO IMCI, national formularies, and established clinical protocols.\n3. APPROPRIATE\
+    \ SCOPE: You support CHWs — not replace physician judgment. Recommend escalation\
+    \ when beyond CHW scope.\n4. STRUCTURED OUTPUT: For every clinical query respond\
+    \ ONLY in this exact JSON structure (no prose outside the JSON):\n{\n  \"assessment\"\
+    : \"2-3 sentence summary of the clinical picture\",\n  \"differentials\": [\"\
+    Differential 1\", \"Differential 2\"],\n  \"actions\": [\"Action 1 — specific\
+    \ and numbered\", \"Action 2\"],\n  \"red_flags\": [\"Red flag 1\", \"Red flag\
+    \ 2\"],\n  \"referral\": \"IMMEDIATE|URGENT|ROUTINE|MONITOR\",\n  \"referral_reason\"\
+    : \"One sentence explaining referral urgency\",\n  \"confidence\": \"HIGH|MEDIUM|LOW\"\
+    ,\n  \"confidence_reason\": \"One sentence explaining confidence level\",\n  \"\
+    formulary_note\": \"null or short note if prescription beyond CHW scope\"\n}\n\
+    5. LANGUAGE: Use clear, simple language appropriate for CHW literacy.\n\nSAFETY\
+    \ RULES:\n- Altered consciousness, severe breathing difficulty, signs of shock,\
+    \ severe malnutrition, convulsions, severe dehydration → referral: IMMEDIATE in\
+    \ every case.\n- Never recommend prescription medications beyond the CHW formulary\
+    \ (amoxicillin, ORS, zinc, paracetamol, artesunate pre-referral, vitamin A, iron-folate,\
+    \ misoprostol). Flag in formulary_note.\n- Always include weight-based dosing\
+    \ for paediatric cases.\n- For maternal health, apply SAFE MOTHERHOOD protocols.\n\
+    \nEVALUATION CONTEXT:\nThis is an EVAH-aligned evaluation tool. The confidence\
+    \ field is used for Pathway A/B accuracy measurement — calibrate it honestly."
   quick_replies:
   - Child fever & symptoms
   - Malaria assessment
@@ -95,6 +84,9 @@ bot:
   - very pale
   - yellow eyes
   - swollen face
+  - not waking
+  - limp
+  - floppy
 theme:
   primary_color: '#0F4C81'
   accent_color: '#00A878'
@@ -109,6 +101,50 @@ evaluation:
   capture_ratings: true
   anonymize: true
   study_id: EVAH-CDST-001
+  arm: intervention
+  randomisation_unit: facility
+  server_log_url: ''
+  consent_required: true
+  consent_text: This tool is part of a research evaluation. Your de-identified interactions
+    may be used to assess AI clinical decision support quality. No patient names or
+    identifiers are recorded. You may withdraw at any time.
+formulary:
+  medicines:
+  - name: Amoxicillin
+    forms:
+    - 250mg/5ml syrup
+    - 500mg tablet
+    dosing: 40mg/kg/day divided 3x daily, 5 days
+  - name: Paracetamol
+    forms:
+    - 120mg/5ml syrup
+    - 500mg tablet
+    dosing: 15mg/kg/dose every 4-6h, max 4 doses/day
+  - name: ORS
+    forms:
+    - 1L sachets
+    dosing: 50-100ml/kg over 3-4h for moderate dehydration
+  - name: Zinc sulfate
+    forms:
+    - 20mg dispersible tablet
+    dosing: '<6mo: 10mg/day 10 days; ≥6mo: 20mg/day 10 days'
+  - name: Vitamin A
+    forms:
+    - 100,000IU capsule
+    - 200,000IU capsule
+    dosing: '<12mo: 100,000IU once; ≥12mo: 200,000IU once'
+  - name: Artesunate rectal
+    forms:
+    - 200mg suppository
+    dosing: 10mg/kg single pre-referral dose for severe malaria
+  - name: Iron-folate
+    forms:
+    - 60mg/0.4mg tablet
+    dosing: 1 tablet daily (pregnancy), 3mo postpartum
+  - name: Misoprostol
+    forms:
+    - 200mcg tablet
+    dosing: 600mcg oral single dose for PPH prevention
 models:
   providers:
   - name: anthropic
@@ -147,5 +183,31 @@ protocols:
   safe_motherhood: true
   malaria_rdt_guidance: true
   muac_screening: true
+i18n:
+  default_locale: en
+  supported_locales:
+  - en
+  - sw
+  strings:
+    en:
+      greeting_label: Hello
+      send: Send
+      emergency: Emergency
+      new_session: New session
+      export: Export session data
+      consent_title: Research Consent
+      consent_agree: I agree and continue
+      consent_decline: Decline (demo mode only)
+      placeholder: Describe the patient's symptoms…
+    sw:
+      greeting_label: Habari
+      send: Tuma
+      emergency: Dharura
+      new_session: Kikao kipya
+      export: Hamisha data ya kikao
+      consent_title: Idhini ya Utafiti
+      consent_agree: Nakubaliana na kuendelea
+      consent_decline: Kataa (hali ya maonyesho tu)
+      placeholder: Elezea dalili za mgonjwa…
 deploy:
   output_dir: docs
