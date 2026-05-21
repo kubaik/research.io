@@ -83,7 +83,8 @@ const EVAL = {{
   facilityId:      '{app.get("facility_id", "FACILITY-001")}',
   protocolVersion: '{PROTOCOL_VERSION}',
   buildHash:       '{ctx.build_hash}',
-  consentRequired: {str(eval_cfg.get("consent_required", True)).lower()},
+  // CHANGE 1: consentRequired hard-coded false — consent screen never shown
+  consentRequired: false,
   consentText:     `{self._js_escape(eval_cfg.get("consent_text", ""))}`,
   serverLogUrl:    `{eval_cfg.get("server_log_url", "")}`,
   sessionId:       _genSessionId(),
@@ -158,7 +159,8 @@ document.addEventListener('DOMContentLoaded', async () => {{
   if ('serviceWorker' in navigator) {{
     navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
   }}
-  EVAL.consentRequired ? showConsentScreen() : initApp();
+  // CHANGE 1: always go straight to initApp — consent screen is disabled
+  initApp();
 }});
 
 function initApp() {{
@@ -180,15 +182,10 @@ function autoResize() {{
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }}
 
-// ─── CONSENT ──────────────────────────────────────────────────────────────
+// ─── CONSENT — kept for API completeness but screen is never shown ─────────
 function showConsentScreen() {{
-  const overlay = document.getElementById('consent-overlay');
-  if (!overlay) {{ initApp(); return; }}
-  const studyBadge = document.getElementById('consent-study-id');
-  if (studyBadge) studyBadge.textContent = `Study: ${{EVAL.studyId}} | Pathway ${{EVAL.pathway}} | Facility: ${{EVAL.facilityId}}`;
-  const bodyEl = document.getElementById('consent-body-text');
-  if (bodyEl) bodyEl.textContent = EVAL.consentText;
-  overlay.classList.remove('hidden');
+  // CHANGE 1: no-op — consent is disabled; call initApp directly
+  initApp();
 }}
 
 function giveConsent() {{
@@ -208,6 +205,9 @@ function declineConsent() {{
 }}
 
 // ─── PROVIDER BANNER ──────────────────────────────────────────────────────
+// CHANGE 2: banner shows only connection status — no model name, no provider
+//           name, no session ID. Demo mode shows a plain warning; live mode
+//           shows a clean "Live AI — Clinical Decision Support Tool" line.
 function renderProviderBanner() {{
   const el  = document.getElementById('safety-banner');
   const dot = document.getElementById('status-dot');
@@ -215,10 +215,11 @@ function renderProviderBanner() {{
 
   if (!PROVIDER.token || PROVIDER.name === 'demo') {{
     el.className = 'status-demo';
-    el.innerHTML = '⚠️ &nbsp;Demo mode — set <strong>ANTHROPIC_API_KEY</strong> or another API key in GitHub Secrets.';
+    el.innerHTML = '⚠️ &nbsp;Demo mode — set an API key in GitHub Secrets to enable live AI.';
     if (dot) dot.className = 'status-dot offline';
   }} else {{
     el.className = 'status-live';
+    // CHANGE 2: removed model name, provider name and session ID from this string
     el.innerHTML = '✅ &nbsp;Live AI — Clinical Decision Support Tool';
   }}
 }}
@@ -246,9 +247,12 @@ function setEmergencyMode(on) {{
       banner.className = 'status-emergency';
       banner.innerHTML = `🚨 &nbsp;<strong>EMERGENCY ALERT</strong> — Refer immediately. Ambulance: <strong>${{amb}}</strong>`;
     }}
+    // CHANGE 4: emergency button is permanently hidden — do NOT show it here
+    // (old code did: document.getElementById('emergency-btn').style.display = 'flex')
   }} else {{
     overlay?.classList.remove('active');
     renderProviderBanner();
+    // CHANGE 4: do not restore button visibility on clear either
   }}
 }}
 
@@ -838,7 +842,9 @@ function exportSession() {{
   URL.revokeObjectURL(url);
 }}
 
-// ─── EMERGENCY BUTTON ─────────────────────────────────────────────────────
+// ─── EMERGENCY BUTTON — kept for triggerEmergency() API completeness ──────
+// CHANGE 4: button is hidden in HTML with display:none !important and
+//           setEmergencyMode() no longer un-hides it, so users never see it.
 function triggerEmergency() {{
   setEmergencyMode(true);
   addMsg('system', '🚨 Emergency protocol activated', {{ noFeedback: true }});
@@ -872,7 +878,8 @@ function newSession() {{
   emergencyMode = false; setEmergencyMode(false);
   document.getElementById('chat-container').innerHTML = '';
   renderProviderBanner();
-  EVAL.consentRequired ? showConsentScreen() : showGreeting();
+  // CHANGE 1: always go straight to showGreeting — consent is disabled
+  showGreeting();
   updateEvalStats();
 }}
 """

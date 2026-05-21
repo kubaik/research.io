@@ -32,12 +32,17 @@ class HtmlWriter:
         i18n = cfg.get("i18n", AppConfig.DEFAULTS["i18n"])
 
         study_id = eval_cfg.get("study_id", "EVAH-CDST-001")
-        facility_id = app.get("facility_id", "FACILITY-001")
         pathway = eval_cfg.get("pathway", "A")
         arm = eval_cfg.get("arm", "intervention")
         locale = i18n.get("default_locale", "en")
         locale_btns = self._locale_buttons(
             i18n.get("supported_locales", ["en"]))
+
+        # CHANGE 2: model chip removed from header entirely.
+        # CHANGE 3: study/facility/pathway/arm metadata removed from
+        #           consent card subtitle and eval panel tags.
+        # CHANGE 4: emergency button kept in DOM but permanently hidden
+        #           via inline style (JS will never un-hide it).
 
         return f"""<!DOCTYPE html>
 <html lang="{locale}">
@@ -57,13 +62,14 @@ class HtmlWriter:
 
   <div id="emergency-overlay" aria-hidden="true"></div>
 
-  <!-- CONSENT SCREEN -->
-  <div id="consent-overlay" role="dialog" aria-modal="true" aria-labelledby="consent-title">
+  <!-- CONSENT SCREEN — kept in DOM but hidden; JS will never show it
+       because consentRequired is false -->
+  <div id="consent-overlay" class="hidden" role="dialog" aria-modal="true" aria-labelledby="consent-title">
     <div class="consent-card">
       <div class="consent-icon" aria-hidden="true">🔒</div>
       <h2 class="consent-title" id="consent-title">Research Consent</h2>
       <p class="consent-body" id="consent-body-text">Loading consent text…</p>
-      <p class="consent-study" id="consent-study-id">{study_id} · Pathway {pathway} · {facility_id}</p>
+      <!-- CHANGE 3: removed study/facility/pathway subtitle line -->
       <div class="consent-actions">
         <button class="consent-btn-primary"   onclick="giveConsent()">I agree and continue</button>
         <button class="consent-btn-secondary" onclick="declineConsent()">Decline (demo mode only)</button>
@@ -112,6 +118,7 @@ class HtmlWriter:
     </div>
     <div class="header-controls">
       {locale_btns}
+      <!-- CHANGE 2: model chip removed — no provider/model name displayed -->
       <div class="status-pill">
         <div class="status-dot" id="status-dot"></div>
         <span>Online</span>
@@ -155,7 +162,9 @@ class HtmlWriter:
             maxlength="2000"
           ></textarea>
           <div class="input-actions">
-            <button id="emergency-btn" onclick="triggerEmergency()" aria-label="Emergency protocol" title="Emergency protocol" style="display:none">
+            <!-- CHANGE 4: emergency button permanently hidden — display:none
+                 and JS will not call show/removeAttribute on it -->
+            <button id="emergency-btn" onclick="triggerEmergency()" aria-label="Emergency protocol" title="Emergency protocol" style="display:none !important">
               <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
               Emergency
             </button>
@@ -169,7 +178,9 @@ class HtmlWriter:
 
     <!-- EVALUATION PANEL -->
     <aside id="eval-panel" aria-label="Evaluation dashboard">
-      <div class="eval-title">📊 EVAH Evaluation — {study_id}</div>
+      <!-- CHANGE 3: "📊 EVAH Evaluation — {study_id}" title simplified;
+           study ID, facility, pathway, arm tags removed from the tags block -->
+      <div class="eval-title">📊 Session Evaluation</div>
       <div>
         <div class="eval-stat"><span>Bot responses</span>       <span class="eval-stat-val" id="eval-total">0</span></div>
         <div class="eval-stat"><span>Marked accurate</span>     <span class="eval-stat-val" id="eval-accurate">0</span></div>
@@ -181,10 +192,10 @@ class HtmlWriter:
       <div>
         <div style="font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Tags</div>
         <div>
-          <span class="eval-tag">Pathway {pathway}</span>
-          <span class="eval-tag">{arm}</span>
+          <!-- CHANGE 3: only clinical/protocol tags remain; no study/arm/provider metadata -->
           <span class="eval-tag">IMCI</span>
           <span class="eval-tag">{app.get("region", "SSA")}</span>
+          <span class="eval-tag">{app.get("facility_type", "PHC")}</span>
         </div>
       </div>
       <div>
@@ -214,7 +225,7 @@ class HtmlWriter:
     </div>
   </div>
 
-  <!-- Built: {ctx.built_at_str} | Provider: {ctx.provider_name} | Model: {ctx.model_id} | Study: {study_id} | Proto: {PROTOCOL_VERSION} | Hash: {ctx.build_hash} -->
+  <!-- Built: {ctx.built_at_str} | Provider: {ctx.provider_name} | Model: {ctx.model_id} | Proto: {PROTOCOL_VERSION} | Hash: {ctx.build_hash} -->
   <script src="static/js/chat.js?v={ctx.build_hash}"></script>
 </body>
 </html>
