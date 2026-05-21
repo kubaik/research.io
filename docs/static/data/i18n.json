@@ -1,0 +1,31 @@
+{
+  "default_locale": "en",
+  "supported_locales": [
+    "en",
+    "sw"
+  ],
+  "strings": {
+    "en": {
+      "greeting_label": "Hello",
+      "send": "Send",
+      "emergency": "Emergency",
+      "new_session": "New session",
+      "export": "Export session data",
+      "consent_title": "Research Consent",
+      "consent_agree": "I agree and continue",
+      "consent_decline": "Decline (demo mode only)",
+      "placeholder": "Describe the patient's symptoms\u2026"
+    },
+    "sw": {
+      "greeting_label": "Habari",
+      "send": "Tuma",
+      "emergency": "Dharura",
+      "new_session": "Kikao kipya",
+      "export": "Hamisha data ya kikao",
+      "consent_title": "Idhini ya Utafiti",
+      "consent_agree": "Nakubaliana na kuendelea",
+      "consent_decline": "Kataa (hali ya maonyesho tu)",
+      "placeholder": "Elezea dalili za mgonjwa\u2026"
+    }
+  }
+}

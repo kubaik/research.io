@@ -1,0 +1,65 @@
+{
+  "medicines": [
+    {
+      "name": "Amoxicillin",
+      "forms": [
+        "250mg/5ml syrup",
+        "500mg tablet"
+      ],
+      "dosing": "40mg/kg/day divided 3x daily, 5 days"
+    },
+    {
+      "name": "Paracetamol",
+      "forms": [
+        "120mg/5ml syrup",
+        "500mg tablet"
+      ],
+      "dosing": "15mg/kg/dose every 4-6h, max 4 doses/day"
+    },
+    {
+      "name": "ORS",
+      "forms": [
+        "1L sachets"
+      ],
+      "dosing": "50-100ml/kg over 3-4h for moderate dehydration"
+    },
+    {
+      "name": "Zinc sulfate",
+      "forms": [
+        "20mg dispersible tablet"
+      ],
+      "dosing": "<6mo: 10mg/day 10 days; \u22656mo: 20mg/day 10 days"
+    },
+    {
+      "name": "Vitamin A",
+      "forms": [
+        "100,000IU capsule",
+        "200,000IU capsule"
+      ],
+      "dosing": "<12mo: 100,000IU once; \u226512mo: 200,000IU once"
+    },
+    {
+      "name": "Artesunate rectal",
+      "forms": [
+        "200mg suppository"
+      ],
+      "dosing": "10mg/kg single pre-referral dose for severe malaria"
+    },
+    {
+      "name": "Iron-folate",
+      "forms": [
+        "60mg/0.4mg tablet"
+      ],
+      "dosing": "1 tablet daily (pregnancy), 3mo postpartum"
+    },
+    {
+      "name": "Misoprostol",
+      "forms": [
+        "200mcg tablet"
+      ],
+      "dosing": "600mcg oral single dose for PPH prevention"
+    }
+  ],
+  "calculator_note": "All doses are for guidance only. Apply clinical judgment. Refer to national formulary for definitive dosing.",
+  "version": "1.0.0"
+}
