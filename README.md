@@ -43,20 +43,19 @@ GitHub Pages → live CDST URL
 
 ```
 health-cdst/
-├── chatbot_system.py          ← Main builder (init/build/auto/verify)
-├── config.yaml                ← CDST config — bot, theme, protocols, eval
-├── requirements.txt           ← pyyaml
-├── .gitignore
-├── docs/                      ← Local dev build output (gitignored)
-│   ├── index.html
-│   ├── config.json
-│   └── static/
-│       ├── js/chat.js
-│       ├── css/chat.css
-│       └── data/protocols.json
-└── .github/
-    └── workflows/
-        └── deploy.yml         ← CI/CD pipeline
+├── chatbot_system.py        ← Now just ~50 lines: logging setup + CLI
+└── cdst/
+    ├── __init__.py          ← Package marker
+    ├── constants.py         ← PROTOCOL_VERSION, ROOT, CONFIG_FILE
+    ├── config.py            ← AppConfig (defaults + YAML load/save)
+    ├── context.py           ← BuildContext (output dir, hash, provider resolution)
+    ├── verifier.py          ← ProviderVerifier (API key discovery + logging)
+    ├── protocols.py         ← ProtocolsData (IMCI, MUAC, Malaria, Maternal, Newborn)
+    ├── static_writer.py     ← StaticFileWriter (CSS, SW, manifest, JSON data files)
+    ├── js_writer.py         ← JavaScriptWriter (generates chat.js)
+    ├── html_writer.py       ← HtmlWriter (generates index.html)
+    ├── output_verifier.py   ← OutputVerifier (post-build sanity check)
+    └── builder.py           ← CDSTBuilder (orchestrates init/build/auto/verify)
 ```
 
 ---
