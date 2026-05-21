@@ -112,7 +112,6 @@ class HtmlWriter:
     </div>
     <div class="header-controls">
       {locale_btns}
-      <span class="model-chip" id="model-chip">{ctx.model_id}</span>
       <div class="status-pill">
         <div class="status-dot" id="status-dot"></div>
         <span>Online</span>
@@ -140,15 +139,6 @@ class HtmlWriter:
       <div class="protocol-list" id="protocol-list">
         <div style="padding:12px 8px;font-size:12.5px;color:var(--muted)">Loading protocols…</div>
       </div>
-      <div class="sidebar-divider"></div>
-      <div style="padding:10px 12px">
-        <div style="font-size:11px;color:var(--muted);line-height:1.7">
-          Study: <code style="font-size:10px">{study_id}</code><br>
-          Facility: <code style="font-size:10px">{facility_id}</code><br>
-          Pathway: <code style="font-size:10px">{pathway}</code> · Arm: <code style="font-size:10px">{arm}</code><br>
-          Provider: <code style="font-size:10px">{ctx.provider_name}</code>
-        </div>
-      </div>
     </aside>
 
     <!-- CHAT COLUMN -->
@@ -165,7 +155,7 @@ class HtmlWriter:
             maxlength="2000"
           ></textarea>
           <div class="input-actions">
-            <button id="emergency-btn" onclick="triggerEmergency()" aria-label="Emergency protocol" title="Emergency protocol">
+            <button id="emergency-btn" onclick="triggerEmergency()" aria-label="Emergency protocol" title="Emergency protocol" style="display:none">
               <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
               Emergency
             </button>

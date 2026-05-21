@@ -120,7 +120,7 @@ class AppConfig:
             "arm":                "intervention",
             "randomisation_unit": "facility",
             "server_log_url":     "",
-            "consent_required":   True,
+            "consent_required":   False,
             "consent_text": (
                 "This tool is part of a research evaluation. Your de-identified "
                 "interactions may be used to assess AI clinical decision support quality. "

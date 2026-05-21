@@ -209,11 +209,9 @@ function declineConsent() {{
 
 // ─── PROVIDER BANNER ──────────────────────────────────────────────────────
 function renderProviderBanner() {{
-  const el        = document.getElementById('safety-banner');
-  const dot       = document.getElementById('status-dot');
-  const modelChip = document.getElementById('model-chip');
+  const el  = document.getElementById('safety-banner');
+  const dot = document.getElementById('status-dot');
   if (!el) return;
-  if (modelChip) modelChip.textContent = PROVIDER.model;
 
   if (!PROVIDER.token || PROVIDER.name === 'demo') {{
     el.className = 'status-demo';
@@ -221,9 +219,7 @@ function renderProviderBanner() {{
     if (dot) dot.className = 'status-dot offline';
   }} else {{
     el.className = 'status-live';
-    const labels = {{ anthropic: 'Anthropic Claude', openai: 'OpenAI', github: 'GitHub Models', groq: 'Groq', mistral: 'Mistral' }};
-    const label  = labels[PROVIDER.name] || PROVIDER.name;
-    el.innerHTML = `✅ &nbsp;Live — <strong>${{label}}</strong> · ${{PROVIDER.model}} · ${{EVAL.facilityId}} · Session: <code style="font-size:10px">${{EVAL.sessionId.slice(0,8)}}</code>`;
+    el.innerHTML = '✅ &nbsp;Live AI — Clinical Decision Support Tool';
   }}
 }}
 
