@@ -15,4 +15,3 @@ __pycache__/
 #
 # _site/ is used in CI because upload-pages-artifact@v3 runs `git add`
 # internally — which exits 1 if the path is gitignored at that point.
-_site/
