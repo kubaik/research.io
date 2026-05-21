@@ -27,7 +27,7 @@ class AppConfig:
             "facility_type": "Primary Health Centre",
             "facility_id":   "FACILITY-001",
             "emergency_contacts": {
-                "ambulance":               "999",
+                "ambulance":               "911",
                 "referral_hospital":       "+254 000 000 000",
                 "district_health_officer": "+254 000 000 001",
             },
