@@ -104,7 +104,7 @@ evaluation:
   arm: intervention
   randomisation_unit: facility
   server_log_url: ''
-  consent_required: true
+  consent_required: false
   consent_text: This tool is part of a research evaluation. Your de-identified interactions
     may be used to assess AI clinical decision support quality. No patient names or
     identifiers are recorded. You may withdraw at any time.
