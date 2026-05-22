@@ -21,6 +21,9 @@ class ProviderVerifier:
         """
         Log found/missing keys and return the first active provider dict,
         or None if no keys are configured.
+
+        Priority order is defined by the providers list in config.yaml.
+        GIT_TOKEN (GitHub Models) is expected to be listed first.
         """
         found, missing = [], []
 
@@ -31,12 +34,13 @@ class ProviderVerifier:
                          p["env_key"], p["name"], p["model"])
             else:
                 missing.append(p)
-                log.warning("MISSING %-28s (%s)", p["env_key"], p["name"])
+                log.info("MISSING %-28s (%s)", p["env_key"], p["name"])
 
         if not found:
-            log.warning(
-                "No API keys found locally — chat.js will use __API_TOKEN__ "
-                "placeholder; GitHub Actions injects the real key at deploy time."
+            # Not a warning — GitHub Actions injects the key at deploy time.
+            log.info(
+                "No API keys found locally — GitHub Actions will inject "
+                "the real key at deploy time via __API_TOKEN__ placeholder."
             )
             return None
 

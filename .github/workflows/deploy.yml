@@ -43,6 +43,9 @@ jobs:
       # ── 3. Inject API key into chat.js at deploy time ──────────────
       # The token placeholder __API_TOKEN__ is replaced with the real secret.
       # This means NO secret is ever stored in the repository.
+      # ── 3. Inject API key into chat.js at deploy time ──────────────
+      # GIT_TOKEN (GitHub Models) is the primary key.
+      # __API_TOKEN__ placeholder is replaced; NO secret is ever in the repo.
       - name: Inject API token
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -53,17 +56,17 @@ jobs:
         run: |
           cp -r docs _site
 
-          # Determine which key is active (priority order matches config)
+          # Priority: GIT_TOKEN first (GitHub Models), then others
           ACTIVE_TOKEN=""
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
+          if [ -n "$GIT_TOKEN" ]; then
+            ACTIVE_TOKEN="$GIT_TOKEN"
+            echo "Using GIT_TOKEN (GitHub Models)"
+          elif [ -n "$ANTHROPIC_API_KEY" ]; then
             ACTIVE_TOKEN="$ANTHROPIC_API_KEY"
             echo "Using ANTHROPIC_API_KEY"
           elif [ -n "$OPENAI_API_KEY" ]; then
             ACTIVE_TOKEN="$OPENAI_API_KEY"
             echo "Using OPENAI_API_KEY"
-          elif [ -n "$GIT_TOKEN" ]; then
-            ACTIVE_TOKEN="$GIT_TOKEN"
-            echo "Using GIT_TOKEN"
           elif [ -n "$GROQ_API_KEY" ]; then
             ACTIVE_TOKEN="$GROQ_API_KEY"
             echo "Using GROQ_API_KEY"
@@ -74,10 +77,9 @@ jobs:
             echo "No API key set — deploying in demo mode"
           fi
 
-          # Replace placeholder in the copied _site (never modifies docs/)
           if [ -n "$ACTIVE_TOKEN" ]; then
             sed -i "s|__API_TOKEN__|${ACTIVE_TOKEN}|g" _site/static/js/chat.js
-            echo "✅ Token injected into _site/static/js/chat.js"
+            echo "Token injected into _site/static/js/chat.js"
           fi
 
       # ── 4. Deploy ──────────────────────────────────────────────────
