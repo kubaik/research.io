@@ -88,7 +88,13 @@
     </div>
   </header>
 
-  <div id="safety-banner" role="status" aria-live="polite">Initialising…</div>
+  <!--
+    safety-banner: hidden by default (display:none removes it from layout).
+    JS shows it only for emergency alerts via setEmergencyMode(true).
+    CSS --banner-h variable is set to 0 when hidden so layout is unaffected.
+  -->
+  <div id="safety-banner" role="status" aria-live="polite" aria-hidden="true"
+       style="display:none"></div>
 
   <div class="app-body">
 
@@ -192,7 +198,7 @@
     </div>
   </div>
 
-  <!-- Built: 2026-05-22 08:01 UTC | Provider: anthropic | Model: claude-sonnet-4-20250514 | Proto: 1.0.0 | Hash: 01d835b3 -->
+  <!-- Built: 2026-05-22 08:34 UTC | Provider: anthropic | Model: claude-sonnet-4-20250514 | Proto: 1.0.0 | Hash: 01d835b3 -->
   <script src="static/js/chat.js?v=01d835b3"></script>
 </body>
 </html>

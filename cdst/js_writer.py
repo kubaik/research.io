@@ -51,7 +51,7 @@ class JavaScriptWriter:
 
         provider = ctx.provider
         provider_type = provider.get(
-            "provider_type", "openai") if provider else "demo"
+            "provider_type", "openai") if provider else "openai"
         auth_header = provider.get(
             "auth_header", "Bearer") if provider else "Bearer"
         api_version = provider.get("api_version", "") if provider else ""
@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', async () => {{
 }});
 
 function initApp() {{
-  renderProviderBanner();
+  hideBanner();
   showGreeting();
   loadProtocols();
   updateEvalStats();
@@ -180,9 +180,6 @@ function initApp() {{
 
   const inp = document.getElementById('user-input');
   inp?.addEventListener('keydown', e => {{
-    // On mobile (no physical keyboard), Enter should NOT auto-submit — let
-    // the user use the send button. On desktop, Enter submits, Shift+Enter
-    // adds a newline. We detect "mobile-ish" by checking maxTouchPoints.
     const isMobile = navigator.maxTouchPoints > 0;
     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {{
       e.preventDefault();
@@ -196,6 +193,15 @@ function autoResize() {{
   const el = document.getElementById('user-input');
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}}
+
+// ─── BANNER ───────────────────────────────────────────────────────────────
+// The safety banner is hidden by default and only used for emergency alerts.
+function hideBanner() {{
+  const el = document.getElementById('safety-banner');
+  if (!el) return;
+  el.style.display = 'none';
+  el.setAttribute('aria-hidden', 'true');
 }}
 
 // ─── CONSENT — disabled, kept for API completeness ────────────────────────
@@ -213,31 +219,6 @@ function declineConsent() {{
   initApp();
 }}
 
-// ─── PROVIDER BANNER ──────────────────────────────────────────────────────
-// Shows only live/demo status — no model name, no provider, no session ID.
-function renderProviderBanner() {{
-  const el  = document.getElementById('safety-banner');
-  const dot = document.getElementById('status-dot');
-  if (!el) return;
-
-  const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
-  if (!isLive) {{
-    el.className = 'status-demo';
-    el.innerHTML = '⚠️ &nbsp;Demo mode — AI responses are illustrative only. Add an API key in GitHub Secrets to enable live AI.';
-    if (dot) dot.className = 'status-dot offline';
-  }} else {{
-    el.className = 'status-live';
-    el.innerHTML = '✅ &nbsp;Live AI — Clinical Decision Support Tool';
-    if (dot) dot.className = 'status-dot';
-  }}
-}}
-
-// ─── GREETING ─────────────────────────────────────────────────────────────
-function showGreeting() {{
-  addMsg('bot', BOT_CONFIG.greeting, {{ noFeedback: true }});
-  setTimeout(renderQuickReplies, 400);
-}}
-
 // ─── SAFETY / EMERGENCY ───────────────────────────────────────────────────
 function detectEmergency(text) {{
   const lower = text.toLowerCase();
@@ -252,12 +233,14 @@ function setEmergencyMode(on) {{
   if (on) {{
     overlay?.classList.add('active');
     if (banner) {{
+      banner.style.display = '';
+      banner.removeAttribute('aria-hidden');
       banner.className = 'status-emergency';
       banner.innerHTML = `🚨 &nbsp;<strong>EMERGENCY ALERT</strong> — Refer immediately. Ambulance: <strong>${{amb}}</strong>`;
     }}
   }} else {{
     overlay?.classList.remove('active');
-    renderProviderBanner();
+    hideBanner();
   }}
 }}
 
@@ -479,7 +462,7 @@ async function send(override) {{
 
   try {{
     let reply;
-    const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
+    const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__';
     if (isLive && isOnline) {{
       reply = await callAIWithRetry();
     }} else if (!isOnline) {{
@@ -565,7 +548,7 @@ async function callOpenAICompat(signal) {{
   return data.choices?.[0]?.message?.content?.trim() || 'No response received.';
 }}
 
-// ─── DEMO MODE ────────────────────────────────────────────────────────────
+// ─── DEMO / FALLBACK MODE ─────────────────────────────────────────────────
 async function demoReply(text) {{
   await sleep(700 + Math.random() * 400);
   const t = text.toLowerCase();
@@ -577,7 +560,7 @@ async function demoReply(text) {{
       actions: ["Measure temperature (axillary) — document reading","Check ALL IMCI danger signs","Perform malaria RDT if available","Assess respiratory rate vs age-specific threshold","Check for stiff neck and bulging fontanelle","Document weight for weight-based dosing"],
       red_flags: ["Cannot drink or breastfeed", "Had convulsions", "Lethargic or unconscious", "Stiff neck", "Severe respiratory distress"],
       referral: "URGENT", referral_reason: "Fever with any danger sign requires urgent facility assessment within 2–4h.",
-      confidence: "MEDIUM", confidence_reason: "Demo mode — limited patient context.",
+      confidence: "MEDIUM", confidence_reason: "Protocol-based guidance — full AI analysis available with live provider.",
       formulary_note: "If RDT positive: ACT per national protocol. Paracetamol 15mg/kg/dose for fever ≥38.5°C."
     }});
   }}
@@ -607,12 +590,12 @@ async function demoReply(text) {{
   }}
 
   return JSON.stringify({{
-    assessment: "Clinical query received in demo mode. A full response requires an active API key.",
+    assessment: "Clinical query received. Provide patient age, weight, and chief complaint for a complete assessment.",
     differentials: ["Diagnosis requires full clinical context", "Please describe specific symptoms for guidance"],
     actions: ["Provide patient age, weight, and chief complaint","Use the protocol sidebar for offline reference","Use the dosing calculator (💊) for weight-based doses"],
     red_flags: ["Any altered consciousness", "Severe breathing difficulty", "Signs of shock"],
     referral: "MONITOR", referral_reason: "Insufficient information to determine referral urgency.",
-    confidence: "LOW", confidence_reason: "Demo mode with no patient information.",
+    confidence: "LOW", confidence_reason: "Insufficient patient information provided.",
     formulary_note: "null"
   }});
 }}
@@ -862,7 +845,12 @@ function clearEmergency() {{
 }}
 
 // ─── SESSION / LOCALE ─────────────────────────────────────────────────────
-function toggleSidebar() {{ document.getElementById('sidebar')?.classList.toggle('collapsed'); }}
+function toggleSidebar() {{
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  sidebar?.classList.toggle('open');
+  backdrop?.classList.toggle('visible');
+}}
 
 function switchLocale(locale) {{
   LOCALE = locale;
@@ -881,8 +869,9 @@ function newSession() {{
   history = []; EVAL.log = []; EVAL.sessionId = _genSessionId(); EVAL.consentGiven = false;
   emergencyMode = false; setEmergencyMode(false);
   document.getElementById('chat-container').innerHTML = '';
-  renderProviderBanner();
+  hideBanner();
   showGreeting();
+  setTimeout(renderQuickReplies, 400);
   updateEvalStats();
 }}
 """

@@ -123,7 +123,13 @@ class HtmlWriter:
     </div>
   </header>
 
-  <div id="safety-banner" role="status" aria-live="polite">Initialising…</div>
+  <!--
+    safety-banner: hidden by default (display:none removes it from layout).
+    JS shows it only for emergency alerts via setEmergencyMode(true).
+    CSS --banner-h variable is set to 0 when hidden so layout is unaffected.
+  -->
+  <div id="safety-banner" role="status" aria-live="polite" aria-hidden="true"
+       style="display:none"></div>
 
   <div class="app-body">
 
