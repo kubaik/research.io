@@ -8,7 +8,7 @@
     "facility_type": "Primary Health Centre",
     "facility_id": "FACILITY-001",
     "emergency_contacts": {
-      "ambulance": "999",
+      "ambulance": "911",
       "referral_hospital": "+254 000 000 000",
       "district_health_officer": "+254 000 000 001"
     }
@@ -177,5 +177,5 @@
   },
   "protocol_version": "1.0.0",
   "build_hash": "01d835b3",
-  "built_at": "2026-05-22T08:34:58.847262+00:00"
+  "built_at": "2026-05-22T08:47:08.624295+00:00"
 }

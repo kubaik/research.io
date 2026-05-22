@@ -5,7 +5,7 @@ JavaScript bundle (chat.js).
 Security model
 --------------
 The real API token is NEVER written here. Instead, the literal string
-TOKEN_PLACEHOLDER ("__API_TOKEN__") is embedded.  GitHub Actions replaces
+TOKEN_PLACEHOLDER ("__API_TOKEN__") is embedded. GitHub Actions replaces
 that placeholder with the real secret at deploy time via `sed`, so no
 secret ever lands in the git repository.
 """
@@ -32,10 +32,6 @@ class JavaScriptWriter:
             content, encoding="utf-8"
         )
 
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def _js_escape(text: str) -> str:
         return text.replace("\\", "\\\\").replace("`", "\\`").replace("\n", "\\n")
@@ -53,9 +49,11 @@ class JavaScriptWriter:
         provider_type = provider.get(
             "provider_type", "openai") if provider else "openai"
         auth_header = provider.get(
-            "auth_header", "Bearer") if provider else "Bearer"
-        api_version = provider.get("api_version", "") if provider else ""
+            "auth_header",   "Bearer") if provider else "Bearer"
+        api_version = provider.get("api_version",   "") if provider else ""
         endpoint = provider["endpoint"] if provider else ""
+
+        default_locale = i18n_cfg.get("default_locale", "en")
 
         return f"""/* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
@@ -64,7 +62,8 @@ class JavaScriptWriter:
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
-// __API_TOKEN__ is replaced by GitHub Actions at deploy time — never a real key in git.
+// __API_TOKEN__ is replaced by GitHub Actions at deploy time.
+// No secret is ever stored in the repository.
 const PROVIDER = {{
   token:      `{ctx.token}`,
   endpoint:   `{endpoint}`,
@@ -79,24 +78,21 @@ const PROVIDER = {{
 const BOT_CONFIG = {{
   system:         `{self._js_escape(bot["system_prompt"])}`,
   greeting:       `{self._js_escape(bot["greeting"])}`,
-  quickReplies:   {json.dumps(bot["quick_replies"], ensure_ascii=False)},
+  quickReplies:   {json.dumps(bot["quick_replies"],        ensure_ascii=False)},
   safetyKeywords: {json.dumps(bot.get("safety_keywords", []), ensure_ascii=False)},
 }};
 
 // ─── EVALUATION CONFIG ────────────────────────────────────────────────────
 const EVAL = {{
   enabled:         {str(eval_cfg.get("enabled", True)).lower()},
-  studyId:         '{eval_cfg.get("study_id", "EVAH-CDST-001")}',
-  pathway:         '{eval_cfg.get("pathway", "A")}',
-  arm:             '{eval_cfg.get("arm", "intervention")}',
-  facilityId:      '{app.get("facility_id", "FACILITY-001")}',
+  studyId:         '{eval_cfg.get("study_id",  "EVAH-CDST-001")}',
+  pathway:         '{eval_cfg.get("pathway",   "A")}',
+  arm:             '{eval_cfg.get("arm",        "intervention")}',
+  facilityId:      '{app.get("facility_id",    "FACILITY-001")}',
   protocolVersion: '{PROTOCOL_VERSION}',
   buildHash:       '{ctx.build_hash}',
-  consentRequired: false,
-  consentText:     `{self._js_escape(eval_cfg.get("consent_text", ""))}`,
   serverLogUrl:    `{eval_cfg.get("server_log_url", "")}`,
   sessionId:       _genSessionId(),
-  consentGiven:    false,
   log:             [],
 }};
 
@@ -105,13 +101,13 @@ const FORMULARY = {json.dumps(formulary.get("medicines", []), ensure_ascii=False
 
 // ─── I18N ─────────────────────────────────────────────────────────────────
 const I18N_STRINGS = {json.dumps(i18n_cfg.get("strings", {}), ensure_ascii=False)};
-let LOCALE = navigator.language?.startsWith('sw') ? 'sw' : '{i18n_cfg.get("default_locale", "en")}';
-function t(key) {{ return (I18N_STRINGS[LOCALE] || I18N_STRINGS['{i18n_cfg.get("default_locale", "en")}'] || {{}})[key] || key; }}
+let LOCALE = navigator.language?.startsWith('sw') ? 'sw' : '{default_locale}';
+function t(key) {{ return (I18N_STRINGS[LOCALE] || I18N_STRINGS['{default_locale}'] || {{}})[key] || key; }}
 
 // ─── EMERGENCY CONTACTS ───────────────────────────────────────────────────
 const EMERGENCY_CONTACTS = {json.dumps(app.get("emergency_contacts", {}), ensure_ascii=False)};
 
-// ─── OFFLINE QUEUE ────────────────────────────────────────────────────────
+// ─── CONNECTIVITY ─────────────────────────────────────────────────────────
 let offlineQueue = [];
 let isOnline     = navigator.onLine;
 
@@ -129,13 +125,11 @@ async function flushOfflineQueue() {{
   offlineQueue = [];
   try {{
     await fetch(EVAL.serverLogUrl, {{
-      method: 'POST',
+      method:  'POST',
       headers: {{'Content-Type': 'application/json'}},
-      body: JSON.stringify({{ batch, sessionId: EVAL.sessionId }}),
+      body:    JSON.stringify({{ batch, sessionId: EVAL.sessionId }}),
     }});
-  }} catch (e) {{
-    offlineQueue = [...batch, ...offlineQueue];
-  }}
+  }} catch {{ offlineQueue = [...batch, ...offlineQueue]; }}
 }}
 
 // ─── STATE ────────────────────────────────────────────────────────────────
@@ -154,19 +148,17 @@ function _hashChain(prev, data) {{
   return btoa(prev.slice(-8) + JSON.stringify(data)).slice(0, 16);
 }}
 
-function esc(t) {{
-  return String(t || '')
+function esc(s) {{
+  return String(s || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }}
 
 function sleep(ms) {{ return new Promise(r => setTimeout(r, ms)); }}
 
-// ─── INIT ─────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', async () => {{
-  if ('serviceWorker' in navigator) {{
-    navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
-  }}
+// ─── BOOT ─────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {{
+  navigator.serviceWorker?.register('./sw.js').catch(e => console.warn('SW:', e));
   initApp();
 }});
 
@@ -180,8 +172,8 @@ function initApp() {{
 
   const inp = document.getElementById('user-input');
   inp?.addEventListener('keydown', e => {{
-    const isMobile = navigator.maxTouchPoints > 0;
-    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {{
+    // Desktop: Enter submits; mobile uses the send button
+    if (e.key === 'Enter' && !e.shiftKey && navigator.maxTouchPoints === 0) {{
       e.preventDefault();
       send();
     }}
@@ -191,12 +183,12 @@ function initApp() {{
 
 function autoResize() {{
   const el = document.getElementById('user-input');
+  if (!el) return;
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }}
 
-// ─── BANNER ───────────────────────────────────────────────────────────────
-// The safety banner is hidden by default and only used for emergency alerts.
+// ─── SAFETY BANNER — emergency use only ───────────────────────────────────
 function hideBanner() {{
   const el = document.getElementById('safety-banner');
   if (!el) return;
@@ -204,22 +196,7 @@ function hideBanner() {{
   el.setAttribute('aria-hidden', 'true');
 }}
 
-// ─── CONSENT — disabled, kept for API completeness ────────────────────────
-function showConsentScreen() {{ initApp(); }}
-function giveConsent() {{
-  EVAL.consentGiven     = true;
-  EVAL.consentTimestamp = new Date().toISOString();
-  document.getElementById('consent-overlay')?.classList.add('hidden');
-  initApp();
-}}
-function declineConsent() {{
-  EVAL.consentGiven = false;
-  EVAL.enabled      = false;
-  document.getElementById('consent-overlay')?.classList.add('hidden');
-  initApp();
-}}
-
-// ─── SAFETY / EMERGENCY ───────────────────────────────────────────────────
+// ─── EMERGENCY ────────────────────────────────────────────────────────────
 function detectEmergency(text) {{
   const lower = text.toLowerCase();
   return BOT_CONFIG.safetyKeywords.some(kw => lower.includes(kw));
@@ -244,7 +221,7 @@ function setEmergencyMode(on) {{
   }}
 }}
 
-// ─── STRUCTURED CLINICAL CARD ─────────────────────────────────────────────
+// ─── CLINICAL CARD ────────────────────────────────────────────────────────
 function parseClinicalJSON(text) {{
   const match = text.match(/\\{{[\\s\\S]*\\}}/);
   if (!match) return null;
@@ -252,7 +229,7 @@ function parseClinicalJSON(text) {{
 }}
 
 function renderClinicalCard(data) {{
-  const refClass = {{ IMMEDIATE: 'immediate', URGENT: 'urgent', ROUTINE: 'routine', MONITOR: 'monitor' }}[data.referral] || 'monitor';
+  const refClass = {{ IMMEDIATE:'immediate', URGENT:'urgent', ROUTINE:'routine', MONITOR:'monitor' }}[data.referral] || 'monitor';
   const refLabel = {{
     IMMEDIATE: '🔴 EMERGENCY REFERRAL REQUIRED',
     URGENT:    '🟠 Urgent referral (2–4h)',
@@ -272,8 +249,8 @@ function renderClinicalCard(data) {{
 
   const formularyNote = data.formulary_note && data.formulary_note !== 'null'
     ? `<div class="clinical-section">
-        <div class="clinical-section-label warning">⚠ Formulary note</div>
-        <div class="clinical-content">${{esc(data.formulary_note)}}</div>
+         <div class="clinical-section-label warning">⚠ Formulary note</div>
+         <div class="clinical-content">${{esc(data.formulary_note)}}</div>
        </div>`
     : '';
 
@@ -305,9 +282,9 @@ function addMsg(role, text, opts = {{}}) {{
   const container = document.getElementById('chat-container');
   if (!container) return;
 
-  const id  = 'msg-' + (++msgCounter);
-  const ts  = new Date().toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit' }});
-  const el  = document.createElement('div');
+  const id = 'msg-' + (++msgCounter);
+  const ts = new Date().toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit' }});
+  const el = document.createElement('div');
 
   const clinicalData = (role === 'bot' && !opts.noFeedback) ? parseClinicalJSON(text) : null;
   const isEmergency  = role === 'bot' && (
@@ -329,20 +306,19 @@ function addMsg(role, text, opts = {{}}) {{
       ? formatBotText(text)
       : esc(text).replace(/\\n/g, '<br>');
 
-  const confidence = clinicalData?.confidence || extractConfidence(text);
-
+  const confidence   = clinicalData?.confidence || extractConfidence(text);
   const feedbackHtml = (role === 'bot' && !opts.noFeedback) ? `
     <div class="msg-feedback">
-      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}', 'accurate')">✓ Accurate</button>
-      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}', 'inaccurate')">✗ Inaccurate</button>
-      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}', 'escalate')">⬆ Review</button>
+      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}','accurate')">✓ Accurate</button>
+      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}','inaccurate')">✗ Inaccurate</button>
+      <button class="feedback-btn" onclick="rateMsgAccuracy('${{id}}','escalate')">⬆ Review</button>
       ${{confidence ? `<span class="confidence-chip ${{confidence}}">${{confidence}}</span>` : ''}}
     </div>
     <div class="followup-form">
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:600">Schedule follow-up</div>
       <div class="followup-row">
         <input type="date" class="followup-input" id="fu-date-${{id}}" min="${{new Date().toISOString().split('T')[0]}}">
-        <input type="text" class="followup-input" id="fu-reason-${{id}}" placeholder="Reason…" style="flex:2">
+        <input type="text"  class="followup-input" id="fu-reason-${{id}}" placeholder="Reason…" style="flex:2">
         <button class="followup-btn" onclick="saveFollowUp('${{id}}')">Save</button>
       </div>
     </div>` : '';
@@ -354,7 +330,7 @@ function addMsg(role, text, opts = {{}}) {{
       <div class="msg-meta">
         <span>${{ts}}</span>
         ${{isEmergency ? '<span style="font-weight:600;color:var(--danger)">⚠ EMERGENCY</span>' : ''}}
-        ${{!isOnline   ? '<span class="offline-badge">📡 Offline</span>' : ''}}
+        ${{!isOnline   ? '<span class="offline-badge">📡 Offline</span>'                        : ''}}
       </div>
       ${{feedbackHtml}}
     </div>`;
@@ -363,12 +339,13 @@ function addMsg(role, text, opts = {{}}) {{
   container.scrollTop = container.scrollHeight;
 
   if (EVAL.enabled) {{
-    const prev  = EVAL.log.length ? EVAL.log[EVAL.log.length - 1].chainHash || '' : '';
+    const prev  = EVAL.log.length ? (EVAL.log[EVAL.log.length - 1].chainHash || '') : '';
     const entry = {{
       t: Date.now(), role, len: text.length, emergency: isEmergency,
-      referral: clinicalData?.referral || null, confidence: clinicalData?.confidence || confidence || null,
+      referral:   clinicalData?.referral   || null,
+      confidence: clinicalData?.confidence || confidence || null,
       feedback: null, followUp: null, msgId: id,
-      chainHash: _hashChain(prev, {{ role, len: text.length }})
+      chainHash: _hashChain(prev, {{ role, len: text.length }}),
     }};
     EVAL.log.push(entry);
     updateEvalStats();
@@ -420,10 +397,10 @@ function renderQuickReplies() {{
   el.className = 'quick-replies';
   el.id        = 'quick-replies';
   BOT_CONFIG.quickReplies.forEach(r => {{
-    const btn      = document.createElement('button');
-    btn.className  = 'quick-btn';
+    const btn       = document.createElement('button');
+    btn.className   = 'quick-btn';
     btn.textContent = r;
-    btn.onclick    = () => {{ el.remove(); send(r); }};
+    btn.onclick     = () => {{ el.remove(); send(r); }};
     el.appendChild(btn);
   }});
   c.appendChild(el);
@@ -433,7 +410,7 @@ function renderQuickReplies() {{
 function formatBotText(text) {{
   return esc(text)
     .replace(/\\n\\n/g, '</p><p style="margin-top:8px">')
-    .replace(/\\n/g,   '<br>')
+    .replace(/\\n/g,    '<br>')
     .replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')
     .replace(/\\*(.+?)\\*/g,   '<em>$1</em>')
     .replace(/`(.+?)`/g,  '<code style="font-family:var(--font-mono);font-size:12.5px;background:var(--bg);padding:1px 5px;border-radius:3px">$1</code>')
@@ -441,7 +418,7 @@ function formatBotText(text) {{
              '<span style="color:var(--danger);font-weight:700">⚠ $1</span>');
 }}
 
-// ─── SEND + RETRY ─────────────────────────────────────────────────────────
+// ─── SEND ─────────────────────────────────────────────────────────────────
 async function send(override) {{
   if (busy) return;
   const inp  = document.getElementById('user-input');
@@ -461,24 +438,17 @@ async function send(override) {{
   showTyping();
 
   try {{
-    let reply;
-    const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__';
-    if (isLive && isOnline) {{
-      reply = await callAIWithRetry();
-    }} else if (!isOnline) {{
-      offlineQueue.push({{ text, ts: Date.now() }});
-      reply = await demoReply(text);
-      addMsg('system', '📡 Offline — response from local protocols. Will retry with AI when connection restores.', {{ noFeedback: true }});
-    }} else {{
-      reply = await demoReply(text);
-    }}
+    const reply = await callAIWithRetry();
     removeTyping();
     addMsg('bot', reply);
     history.push({{ role: 'assistant', content: reply }});
   }} catch (err) {{
     removeTyping();
     const amb = EMERGENCY_CONTACTS.ambulance || '999';
-    addMsg('bot', `⚠️ Connection error: ${{esc(err.message || 'Unknown error')}}\\n\\nFor emergencies call: ${{amb}}`);
+    addMsg('bot',
+      `⚠️ Unable to reach the AI service: ${{esc(err.message || 'Unknown error')}}\\n\\n` +
+      `Please check your connection and try again. For emergencies call: ${{amb}}`
+    );
     console.error('[HealthAssist CDST]', err);
   }}
 
@@ -487,25 +457,23 @@ async function send(override) {{
   inp?.focus();
 }}
 
-async function callAIWithRetry(maxRetries = 2, timeoutMs = 15000) {{
+// ─── AI CALL STACK ────────────────────────────────────────────────────────
+async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {{
+    const controller = new AbortController();
+    const timer      = setTimeout(() => controller.abort(), timeoutMs);
     try {{
-      const controller = new AbortController();
-      const timer      = setTimeout(() => controller.abort(), timeoutMs);
-      try {{
-        const reply = await callAI(controller.signal);
-        clearTimeout(timer);
-        return reply;
-      }} finally {{
-        clearTimeout(timer);
-      }}
+      const reply = await callAI(controller.signal);
+      clearTimeout(timer);
+      return reply;
     }} catch (err) {{
+      clearTimeout(timer);
       lastErr = err;
-      if (err.name === 'AbortError') throw new Error(`Request timed out after ${{timeoutMs/1000}}s`);
+      if (err.name === 'AbortError') throw new Error(`Request timed out after ${{timeoutMs / 1000}}s`);
       if (attempt < maxRetries) {{
         await sleep(1000 * (attempt + 1));
-        console.warn(`[CDST] Retry ${{attempt + 1}}/${{maxRetries}}`);
+        console.warn(`[CDST] Retry ${{attempt + 1}}/${{maxRetries}}: ${{err.message}}`);
       }}
     }}
   }}
@@ -517,18 +485,29 @@ async function callAI(signal) {{
 }}
 
 async function callAnthropic(signal) {{
-  const messages = history.map(m => ({{ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content }}));
+  const messages = history.map(m => ({{
+    role:    m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+  }}));
   const res = await fetch(PROVIDER.endpoint, {{
     method: 'POST', signal,
     headers: {{
-      'Content-Type': 'application/json',
-      'x-api-key': PROVIDER.token,
+      'Content-Type':    'application/json',
+      'x-api-key':       PROVIDER.token,
       'anthropic-version': PROVIDER.apiVersion || '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     }},
-    body: JSON.stringify({{ model: PROVIDER.model, max_tokens: 1024, system: BOT_CONFIG.system, messages }}),
+    body: JSON.stringify({{
+      model:      PROVIDER.model,
+      max_tokens: 1024,
+      system:     BOT_CONFIG.system,
+      messages,
+    }}),
   }});
-  if (!res.ok) {{ const e = await res.json().catch(() => ({{}})); throw new Error(e.error?.message || `HTTP ${{res.status}}`); }}
+  if (!res.ok) {{
+    const e = await res.json().catch(() => ({{}}));
+    throw new Error(e.error?.message || `HTTP ${{res.status}}`);
+  }}
   const data = await res.json();
   return data.content?.[0]?.text?.trim() || 'No response received.';
 }}
@@ -536,68 +515,23 @@ async function callAnthropic(signal) {{
 async function callOpenAICompat(signal) {{
   const res = await fetch(PROVIDER.endpoint, {{
     method: 'POST', signal,
-    headers: {{ 'Content-Type': 'application/json', 'Authorization': `${{PROVIDER.authHeader}} ${{PROVIDER.token}}` }},
+    headers: {{
+      'Content-Type':  'application/json',
+      'Authorization': `${{PROVIDER.authHeader}} ${{PROVIDER.token}}`,
+    }},
     body: JSON.stringify({{
-      model: PROVIDER.model,
-      messages: [{{ role: 'system', content: BOT_CONFIG.system }}, ...history],
-      max_tokens: 1024, temperature: 0.2,
+      model:       PROVIDER.model,
+      messages:    [{{ role: 'system', content: BOT_CONFIG.system }}, ...history],
+      max_tokens:  1024,
+      temperature: 0.2,
     }}),
   }});
-  if (!res.ok) {{ const e = await res.json().catch(() => ({{}})); throw new Error(e.error?.message || `HTTP ${{res.status}}`); }}
+  if (!res.ok) {{
+    const e = await res.json().catch(() => ({{}}));
+    throw new Error(e.error?.message || `HTTP ${{res.status}}`);
+  }}
   const data = await res.json();
   return data.choices?.[0]?.message?.content?.trim() || 'No response received.';
-}}
-
-// ─── DEMO / FALLBACK MODE ─────────────────────────────────────────────────
-async function demoReply(text) {{
-  await sleep(700 + Math.random() * 400);
-  const t = text.toLowerCase();
-
-  if (t.includes('fever') || t.includes('malaria') || t.includes('temperature')) {{
-    return JSON.stringify({{
-      assessment: "Child presenting with fever in a malaria-endemic setting. Systematic IMCI assessment required before treatment.",
-      differentials: ["Uncomplicated malaria", "Bacterial infection (pneumonia, UTI)", "Viral illness", "Meningitis (if stiff neck)"],
-      actions: ["Measure temperature (axillary) — document reading","Check ALL IMCI danger signs","Perform malaria RDT if available","Assess respiratory rate vs age-specific threshold","Check for stiff neck and bulging fontanelle","Document weight for weight-based dosing"],
-      red_flags: ["Cannot drink or breastfeed", "Had convulsions", "Lethargic or unconscious", "Stiff neck", "Severe respiratory distress"],
-      referral: "URGENT", referral_reason: "Fever with any danger sign requires urgent facility assessment within 2–4h.",
-      confidence: "MEDIUM", confidence_reason: "Protocol-based guidance — full AI analysis available with live provider.",
-      formulary_note: "If RDT positive: ACT per national protocol. Paracetamol 15mg/kg/dose for fever ≥38.5°C."
-    }});
-  }}
-
-  if (t.includes('malnutrition') || t.includes('muac') || t.includes('wasting')) {{
-    return JSON.stringify({{
-      assessment: "Child presenting for nutritional assessment. MUAC is the primary screening tool for 6–59 month age group.",
-      differentials: ["Severe acute malnutrition (SAM)", "Moderate acute malnutrition (MAM)", "Well-nourished"],
-      actions: ["Measure MUAC on left mid-upper arm — document in mm","Check for bilateral pitting oedema","Conduct RUTF appetite test if MUAC <115mm","Weigh and plot on growth chart","Assess for medical complications"],
-      red_flags: ["MUAC <115mm", "Bilateral pitting oedema", "Failed appetite test", "Unconscious or lethargic"],
-      referral: "IMMEDIATE", referral_reason: "SAM with any medical complication requires inpatient stabilisation.",
-      confidence: "HIGH", confidence_reason: "MUAC thresholds are evidence-based WHO standards.",
-      formulary_note: "RUTF for OTP. Amoxicillin 40mg/kg/day 5 days. Vitamin A 200,000IU once if not given in last 6 months."
-    }});
-  }}
-
-  if (t.includes('maternal') || t.includes('pregnant') || t.includes('antenatal')) {{
-    return JSON.stringify({{
-      assessment: "Maternal health query — applying Safe Motherhood protocol. Full obstetric assessment including BP required.",
-      differentials: ["Normal pregnancy requiring routine ANC", "Pre-eclampsia", "Antepartum haemorrhage", "Preterm labour"],
-      actions: ["Measure BP immediately — target <140/90","Check for headache, visual disturbance, epigastric pain","Assess fetal movement (after quickening)","Check for vaginal bleeding","Document gestational age and ANC contact number"],
-      red_flags: ["BP ≥140/90", "Severe headache + visual disturbance", "Heavy vaginal bleeding", "Convulsions", "No fetal movement >12h"],
-      referral: "URGENT", referral_reason: "Any danger sign in pregnancy requires urgent obstetric assessment.",
-      confidence: "HIGH", confidence_reason: "Safe Motherhood red flags are evidence-based WHO criteria.",
-      formulary_note: "Misoprostol 600mcg for PPH prevention. Iron-folate 60mg/0.4mg daily throughout pregnancy."
-    }});
-  }}
-
-  return JSON.stringify({{
-    assessment: "Clinical query received. Provide patient age, weight, and chief complaint for a complete assessment.",
-    differentials: ["Diagnosis requires full clinical context", "Please describe specific symptoms for guidance"],
-    actions: ["Provide patient age, weight, and chief complaint","Use the protocol sidebar for offline reference","Use the dosing calculator (💊) for weight-based doses"],
-    red_flags: ["Any altered consciousness", "Severe breathing difficulty", "Signs of shock"],
-    referral: "MONITOR", referral_reason: "Insufficient information to determine referral urgency.",
-    confidence: "LOW", confidence_reason: "Insufficient patient information provided.",
-    formulary_note: "null"
-  }});
 }}
 
 // ─── DOSING CALCULATOR ────────────────────────────────────────────────────
@@ -637,22 +571,26 @@ function calculateDose() {{
   switch (med.name) {{
     case 'Paracetamol': {{
       const dose    = (weight * 15).toFixed(0);
-      const syrupMl = ((weight * 15) / (120/5)).toFixed(1);
+      const syrupMl = ((weight * 15) / (120 / 5)).toFixed(1);
       const tabQty  = (weight * 15 / 500).toFixed(2);
-      doseText = `${{dose}} mg per dose<br><small style="font-size:12px;color:var(--text-2)">= ${{syrupMl}} ml syrup or ${{parseFloat(tabQty).toFixed(1)}} × 500mg tab</small><br><small style="font-size:12px;color:var(--muted)">Every 4–6h, max 4 doses/day</small>`;
+      doseText = `${{dose}} mg per dose<br>
+        <small style="font-size:12px;color:var(--text-2)">= ${{syrupMl}} ml syrup or ${{parseFloat(tabQty).toFixed(1)}} × 500mg tab</small><br>
+        <small style="font-size:12px;color:var(--muted)">Every 4–6h, max 4 doses/day</small>`;
       if (weight * 15 * 4 > 60 * weight) warningText = 'Max dose: do not exceed 60mg/kg/day';
       break;
     }}
     case 'Amoxicillin': {{
       const dose    = (weight * 40 / 3).toFixed(0);
-      const syrupMl = ((weight * 40 / 3) / (250/5)).toFixed(1);
-      doseText = `${{dose}} mg per dose (3x daily)<br><small style="font-size:12px;color:var(--text-2)">= ${{syrupMl}} ml syrup (250mg/5ml)</small><br><small style="font-size:12px;color:var(--muted)">Duration: 5 days</small>`;
+      const syrupMl = ((weight * 40 / 3) / (250 / 5)).toFixed(1);
+      doseText = `${{dose}} mg per dose (3× daily)<br>
+        <small style="font-size:12px;color:var(--text-2)">= ${{syrupMl}} ml syrup (250mg/5ml)</small><br>
+        <small style="font-size:12px;color:var(--muted)">Duration: 5 days</small>`;
       break;
     }}
-    case 'ORS': {{
-      doseText = `${{(weight * 75).toFixed(0)}} ml over 3–4h (moderate)<br><small style="font-size:12px;color:var(--text-2)">Severe: ${{(weight * 100).toFixed(0)}} ml over 3h</small>`;
+    case 'ORS':
+      doseText = `${{(weight * 75).toFixed(0)}} ml over 3–4h (moderate)<br>
+        <small style="font-size:12px;color:var(--text-2)">Severe: ${{(weight * 100).toFixed(0)}} ml over 3h</small>`;
       break;
-    }}
     case 'Zinc sulfate':
       doseText  = weight < 5
         ? '10 mg daily (½ tablet × 10 days — under 6 months)'
@@ -665,7 +603,8 @@ function calculateDose() {{
       break;
     case 'Artesunate rectal': {{
       const dose = (weight * 10).toFixed(0);
-      doseText   = `${{dose}} mg single pre-referral dose<br><small style="font-size:12px;color:var(--text-2)">= ${{Math.ceil(weight * 10 / 200)}} × 200mg suppository</small>`;
+      doseText   = `${{dose}} mg single pre-referral dose<br>
+        <small style="font-size:12px;color:var(--text-2)">= ${{Math.ceil(weight * 10 / 200)}} × 200mg suppository</small>`;
       warningText = 'PRE-REFERRAL ONLY — transfer to facility immediately after';
       break;
     }}
@@ -677,16 +616,18 @@ function calculateDose() {{
     <span class="dose-qty">${{doseText}}</span>
     <span style="font-size:12px;color:var(--muted)">Based on ${{weight}} kg · ${{med.name}}</span>
     ${{warningText ? `<div class="dose-warning">⚠ ${{warningText}}</div>` : ''}}
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Confirm with national formulary. Supports — does not replace — clinical judgment.</div>`;
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">
+      Confirm with national formulary. Supports — does not replace — clinical judgment.
+    </div>`;
 }}
 
 // ─── PROTOCOLS SIDEBAR ────────────────────────────────────────────────────
 async function loadProtocols() {{
   try {{
-    const res  = await fetch('static/data/protocols.json');
+    const res = await fetch('static/data/protocols.json');
     protocolData = await res.json();
     renderProtocolSidebar();
-  }} catch (e) {{ console.warn('Protocol data not loaded:', e); }}
+  }} catch (e) {{ console.warn('Protocol data unavailable:', e); }}
 }}
 
 function renderProtocolSidebar() {{
@@ -701,7 +642,8 @@ function renderProtocolSidebar() {{
     {{ key: 'referral_levels', icon: '🚑', label: 'Referral Levels',       badge: 'Guide',      color: 'green'  }},
   ];
   list.innerHTML = items.map(item => `
-    <div class="protocol-item" onclick="showProtocol('${{item.key}}')" role="button" tabindex="0">
+    <div class="protocol-item" onclick="showProtocol('${{item.key}}')" role="button" tabindex="0"
+         onkeydown="if(event.key==='Enter')showProtocol('${{item.key}}')">
       <div class="protocol-title">${{item.icon}} ${{item.label}} <span class="protocol-badge ${{item.color}}">${{item.badge}}</span></div>
       <div class="protocol-sub">Tap for quick reference</div>
     </div>`).join('');
@@ -720,33 +662,59 @@ function showProtocol(key) {{
 }}
 
 function buildProtocolHTML(key, p) {{
-  const listItems = arr => (arr || []).map(s => `
-    <div class="protocol-list-item"><div class="protocol-bullet"></div><span>${{esc(s)}}</span></div>`).join('');
+  const listItems = arr => (arr || []).map(s =>
+    `<div class="protocol-list-item"><div class="protocol-bullet"></div><span>${{esc(s)}}</span></div>`
+  ).join('');
 
   if (key === 'imci') return `
     <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Emergency signs</div>${{listItems(p.emergency_signs)}}</div>
-    <div class="protocol-section"><div class="protocol-section-title">Fever classification</div>${{Object.entries(p.classify_fever||{{}}).map(([k,v])=>`<div class="protocol-list-item"><div class="protocol-bullet orange"></div><span><strong>${{k.replace('_',' ')}}:</strong> ${{esc(v)}}</span></div>`).join('')}}</div>
-    <div class="protocol-section"><div class="protocol-section-title">Respiratory rate thresholds</div>${{Object.entries(p.respiratory_rate_thresholds||{{}}).map(([k,v])=>`<div class="protocol-list-item"><div class="protocol-bullet orange"></div><span><strong>${{k.replace(/_/g,' ')}}:</strong> ${{esc(v)}}</span></div>`).join('')}}</div>`;
+    <div class="protocol-section"><div class="protocol-section-title">Fever classification</div>
+      ${{Object.entries(p.classify_fever || {{}}).map(([k,v]) =>
+        `<div class="protocol-list-item"><div class="protocol-bullet orange"></div>
+         <span><strong>${{k.replace('_',' ')}}:</strong> ${{esc(v)}}</span></div>`).join('')}}
+    </div>
+    <div class="protocol-section"><div class="protocol-section-title">Respiratory rate thresholds</div>
+      ${{Object.entries(p.respiratory_rate_thresholds || {{}}).map(([k,v]) =>
+        `<div class="protocol-list-item"><div class="protocol-bullet orange"></div>
+         <span><strong>${{k.replace(/_/g,' ')}}:</strong> ${{esc(v)}}</span></div>`).join('')}}
+    </div>`;
 
   if (key === 'muac') return `
-    <div class="protocol-section"><div class="protocol-section-title">MUAC thresholds</div>${{Object.entries(p.thresholds||{{}}).map(([k,v])=>`<div class="protocol-list-item"><div class="protocol-bullet ${{k==='green'?'green':k==='yellow'?'orange':''}}"></div><span><strong>${{k.toUpperCase()}}:</strong> ${{esc(v)}}</span></div>`).join('')}}</div>
-    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">Bilateral oedema</div><p style="font-size:13.5px">${{esc(p.bilateral_oedema||'')}}</p></div>
+    <div class="protocol-section"><div class="protocol-section-title">MUAC thresholds</div>
+      ${{Object.entries(p.thresholds || {{}}).map(([k,v]) =>
+        `<div class="protocol-list-item">
+         <div class="protocol-bullet ${{k==='green'?'green':k==='yellow'?'orange':''}}"></div>
+         <span><strong>${{k.toUpperCase()}}:</strong> ${{esc(v)}}</span></div>`).join('')}}
+    </div>
+    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">Bilateral oedema</div>
+      <p style="font-size:13.5px">${{esc(p.bilateral_oedema || '')}}</p></div>
     ${{p.appetite_test ? `<div class="protocol-section"><div class="protocol-section-title">Appetite test</div><p style="font-size:13.5px">${{esc(p.appetite_test)}}</p></div>` : ''}}`;
 
   if (key === 'malaria_rdt') return `
-    <div class="protocol-section"><div class="protocol-section-title">RDT results</div><p style="font-size:13.5px;margin-bottom:8px"><strong>Positive:</strong> ${{esc(p.positive||'')}}</p><p style="font-size:13.5px"><strong>Negative:</strong> ${{esc(p.negative_clinical||'')}}</p></div>
-    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Severe malaria</div>${{listItems(p.severe_signs)}}<p style="font-size:13px;margin-top:8px;color:var(--danger)">${{esc(p.severe_action||'')}}</p></div>`;
+    <div class="protocol-section"><div class="protocol-section-title">RDT results</div>
+      <p style="font-size:13.5px;margin-bottom:8px"><strong>Positive:</strong> ${{esc(p.positive || '')}}</p>
+      <p style="font-size:13.5px"><strong>Negative:</strong> ${{esc(p.negative_clinical || '')}}</p></div>
+    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Severe malaria</div>
+      ${{listItems(p.severe_signs)}}
+      <p style="font-size:13px;margin-top:8px;color:var(--danger)">${{esc(p.severe_action || '')}}</p></div>`;
 
   if (key === 'maternal') return `
-    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Refer immediately</div>${{listItems(p.refer_immediately)}}</div>
+    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Refer immediately</div>
+      ${{listItems(p.refer_immediately)}}</div>
     ${{p.anc_schedule ? `<div class="protocol-section"><div class="protocol-section-title">ANC schedule</div><p style="font-size:13px">${{esc(p.anc_schedule)}}</p></div>` : ''}}`;
 
   if (key === 'newborn') return `
-    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Newborn danger signs</div>${{listItems(p.danger_signs)}}</div>`;
+    <div class="protocol-section"><div class="protocol-section-title" style="color:var(--danger)">⚠ Newborn danger signs</div>
+      ${{listItems(p.danger_signs)}}</div>`;
 
   if (key === 'referral_levels') {{
     const icons = {{ immediate:'🔴', urgent:'🟠', routine:'🟡', monitor:'🟢' }};
-    return `<div class="protocol-section">${{Object.entries(p).map(([k,v])=>`<div class="protocol-list-item"><span style="font-size:16px">${{icons[k]||'•'}}</span><span><strong style="text-transform:capitalize">${{k}}:</strong> ${{esc(v)}}</span></div>`).join('')}}</div>`;
+    return `<div class="protocol-section">
+      ${{Object.entries(p).map(([k,v]) =>
+        `<div class="protocol-list-item">
+         <span style="font-size:16px">${{icons[k] || '•'}}</span>
+         <span><strong style="text-transform:capitalize">${{k}}:</strong> ${{esc(v)}}</span></div>`).join('')}}
+    </div>`;
   }}
 
   return `<p style="font-size:13.5px">${{esc(JSON.stringify(p, null, 2))}}</p>`;
@@ -768,7 +736,7 @@ function rateMsgAccuracy(msgId, rating) {{
 }}
 
 function updateEvalStats() {{
-  const bot   = EVAL.log.filter(e => e.role === 'bot');
+  const bot = EVAL.log.filter(e => e.role === 'bot');
   const stats = {{
     'eval-total':      bot.length,
     'eval-accurate':   EVAL.log.filter(e => e.feedback === 'accurate').length,
@@ -787,9 +755,23 @@ function toggleEvalPanel() {{ document.getElementById('eval-panel')?.classList.t
 
 function logEvalEvent(data) {{
   if (!EVAL.enabled) return;
-  const payload = {{ ...data, sessionId: EVAL.sessionId, studyId: EVAL.studyId, pathway: EVAL.pathway, arm: EVAL.arm, facilityId: EVAL.facilityId, protocolVersion: EVAL.protocolVersion, ts: data.ts || Date.now() }};
+  const payload = {{
+    ...data,
+    sessionId:       EVAL.sessionId,
+    studyId:         EVAL.studyId,
+    pathway:         EVAL.pathway,
+    arm:             EVAL.arm,
+    facilityId:      EVAL.facilityId,
+    protocolVersion: EVAL.protocolVersion,
+    ts:              data.ts || Date.now(),
+  }};
   if (EVAL.serverLogUrl && isOnline) {{
-    fetch(EVAL.serverLogUrl, {{ method: 'POST', headers: {{'Content-Type':'application/json'}}, body: JSON.stringify(payload), keepalive: true }}).catch(() => offlineQueue.push(payload));
+    fetch(EVAL.serverLogUrl, {{
+      method: 'POST',
+      headers: {{'Content-Type': 'application/json'}},
+      body: JSON.stringify(payload),
+      keepalive: true,
+    }}).catch(() => offlineQueue.push(payload));
   }} else if (EVAL.serverLogUrl) {{
     offlineQueue.push(payload);
   }}
@@ -800,11 +782,14 @@ function serverLog(entry) {{ logEvalEvent({{ type: 'message', ...entry }}); }}
 function exportSession() {{
   const bot  = EVAL.log.filter(e => e.role === 'bot');
   const data = {{
-    studyId: EVAL.studyId, pathway: EVAL.pathway, arm: EVAL.arm,
-    facilityId: EVAL.facilityId, protocolVersion: EVAL.protocolVersion,
-    buildHash: EVAL.buildHash, sessionId: EVAL.sessionId,
-    exportedAt: new Date().toISOString(),
-    consentGiven: EVAL.consentGiven, consentTimestamp: EVAL.consentTimestamp || null,
+    studyId:         EVAL.studyId,
+    pathway:         EVAL.pathway,
+    arm:             EVAL.arm,
+    facilityId:      EVAL.facilityId,
+    protocolVersion: EVAL.protocolVersion,
+    buildHash:       EVAL.buildHash,
+    sessionId:       EVAL.sessionId,
+    exportedAt:      new Date().toISOString(),
     summary: {{
       totalBotMessages:   bot.length,
       userMessages:       EVAL.log.filter(e => e.role === 'user').length,
@@ -826,12 +811,12 @@ function exportSession() {{
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
-  a.download = `evah-${{EVAL.studyId}}-${{EVAL.facilityId}}-${{EVAL.sessionId.slice(0,8)}}-${{Date.now()}}.json`;
+  a.download = `evah-${{EVAL.studyId}}-${{EVAL.facilityId}}-${{EVAL.sessionId.slice(0, 8)}}-${{Date.now()}}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }}
 
-// ─── EMERGENCY — business logic intact, button hidden in UI ───────────────
+// ─── EMERGENCY ACTIONS ────────────────────────────────────────────────────
 function triggerEmergency() {{
   setEmergencyMode(true);
   addMsg('system', '🚨 Emergency protocol activated', {{ noFeedback: true }});
@@ -846,10 +831,8 @@ function clearEmergency() {{
 
 // ─── SESSION / LOCALE ─────────────────────────────────────────────────────
 function toggleSidebar() {{
-  const sidebar  = document.getElementById('sidebar');
-  const backdrop = document.getElementById('sidebar-backdrop');
-  sidebar?.classList.toggle('open');
-  backdrop?.classList.toggle('visible');
+  document.getElementById('sidebar')?.classList.toggle('open');
+  document.getElementById('sidebar-backdrop')?.classList.toggle('visible');
 }}
 
 function switchLocale(locale) {{
@@ -864,14 +847,21 @@ function loadLocaleFromStorage() {{
   if (saved) switchLocale(saved);
 }}
 
+function showGreeting() {{
+  addMsg('bot', BOT_CONFIG.greeting, {{ noFeedback: true }});
+  setTimeout(renderQuickReplies, 400);
+}}
+
 function newSession() {{
   if (emergencyMode && !confirm('Emergency mode is active. Start a new session?')) return;
-  history = []; EVAL.log = []; EVAL.sessionId = _genSessionId(); EVAL.consentGiven = false;
-  emergencyMode = false; setEmergencyMode(false);
+  history       = [];
+  EVAL.log      = [];
+  EVAL.sessionId = _genSessionId();
+  emergencyMode  = false;
+  setEmergencyMode(false);
   document.getElementById('chat-container').innerHTML = '';
   hideBanner();
   showGreeting();
-  setTimeout(renderQuickReplies, 400);
   updateEvalStats();
 }}
 """
