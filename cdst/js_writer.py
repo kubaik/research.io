@@ -1,6 +1,13 @@
 """
 cdst/js_writer.py — JavaScriptWriter: generates the entire client-side
 JavaScript bundle (chat.js).
+
+Security model
+--------------
+The real API token is NEVER written here. Instead, the literal string
+TOKEN_PLACEHOLDER ("__API_TOKEN__") is embedded.  GitHub Actions replaces
+that placeholder with the real secret at deploy time via `sed`, so no
+secret ever lands in the git repository.
 """
 
 from __future__ import annotations
@@ -48,6 +55,7 @@ class JavaScriptWriter:
         auth_header = provider.get(
             "auth_header", "Bearer") if provider else "Bearer"
         api_version = provider.get("api_version", "") if provider else ""
+        endpoint = provider["endpoint"] if provider else ""
 
         return f"""/* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
@@ -56,9 +64,10 @@ class JavaScriptWriter:
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
+// __API_TOKEN__ is replaced by GitHub Actions at deploy time — never a real key in git.
 const PROVIDER = {{
-  token:      `{self._js_escape(ctx.token)}`,
-  endpoint:   `{provider["endpoint"] if provider else ""}`,
+  token:      `{ctx.token}`,
+  endpoint:   `{endpoint}`,
   model:      `{ctx.model_id}`,
   name:       `{ctx.provider_name}`,
   authHeader: `{auth_header}`,
@@ -83,7 +92,6 @@ const EVAL = {{
   facilityId:      '{app.get("facility_id", "FACILITY-001")}',
   protocolVersion: '{PROTOCOL_VERSION}',
   buildHash:       '{ctx.build_hash}',
-  // CHANGE 1: consentRequired hard-coded false — consent screen never shown
   consentRequired: false,
   consentText:     `{self._js_escape(eval_cfg.get("consent_text", ""))}`,
   serverLogUrl:    `{eval_cfg.get("server_log_url", "")}`,
@@ -159,7 +167,6 @@ document.addEventListener('DOMContentLoaded', async () => {{
   if ('serviceWorker' in navigator) {{
     navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
   }}
-  // CHANGE 1: always go straight to initApp — consent screen is disabled
   initApp();
 }});
 
@@ -172,7 +179,16 @@ function initApp() {{
   loadLocaleFromStorage();
 
   const inp = document.getElementById('user-input');
-  inp?.addEventListener('keydown', e => {{ if (e.key === 'Enter' && !e.shiftKey) {{ e.preventDefault(); send(); }} }});
+  inp?.addEventListener('keydown', e => {{
+    // On mobile (no physical keyboard), Enter should NOT auto-submit — let
+    // the user use the send button. On desktop, Enter submits, Shift+Enter
+    // adds a newline. We detect "mobile-ish" by checking maxTouchPoints.
+    const isMobile = navigator.maxTouchPoints > 0;
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {{
+      e.preventDefault();
+      send();
+    }}
+  }});
   inp?.addEventListener('input', autoResize);
 }}
 
@@ -182,45 +198,37 @@ function autoResize() {{
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }}
 
-// ─── CONSENT — kept for API completeness but screen is never shown ─────────
-function showConsentScreen() {{
-  // CHANGE 1: no-op — consent is disabled; call initApp directly
-  initApp();
-}}
-
+// ─── CONSENT — disabled, kept for API completeness ────────────────────────
+function showConsentScreen() {{ initApp(); }}
 function giveConsent() {{
   EVAL.consentGiven     = true;
   EVAL.consentTimestamp = new Date().toISOString();
   document.getElementById('consent-overlay')?.classList.add('hidden');
   initApp();
-  logEvalEvent({{ type: 'consent', given: true, ts: EVAL.consentTimestamp }});
 }}
-
 function declineConsent() {{
   EVAL.consentGiven = false;
   EVAL.enabled      = false;
   document.getElementById('consent-overlay')?.classList.add('hidden');
   initApp();
-  logEvalEvent({{ type: 'consent', given: false }});
 }}
 
 // ─── PROVIDER BANNER ──────────────────────────────────────────────────────
-// CHANGE 2: banner shows only connection status — no model name, no provider
-//           name, no session ID. Demo mode shows a plain warning; live mode
-//           shows a clean "Live AI — Clinical Decision Support Tool" line.
+// Shows only live/demo status — no model name, no provider, no session ID.
 function renderProviderBanner() {{
   const el  = document.getElementById('safety-banner');
   const dot = document.getElementById('status-dot');
   if (!el) return;
 
-  if (!PROVIDER.token || PROVIDER.name === 'demo') {{
+  const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
+  if (!isLive) {{
     el.className = 'status-demo';
-    el.innerHTML = '⚠️ &nbsp;Demo mode — set an API key in GitHub Secrets to enable live AI.';
+    el.innerHTML = '⚠️ &nbsp;Demo mode — AI responses are illustrative only. Add an API key in GitHub Secrets to enable live AI.';
     if (dot) dot.className = 'status-dot offline';
   }} else {{
     el.className = 'status-live';
-    // CHANGE 2: removed model name, provider name and session ID from this string
     el.innerHTML = '✅ &nbsp;Live AI — Clinical Decision Support Tool';
+    if (dot) dot.className = 'status-dot';
   }}
 }}
 
@@ -247,12 +255,9 @@ function setEmergencyMode(on) {{
       banner.className = 'status-emergency';
       banner.innerHTML = `🚨 &nbsp;<strong>EMERGENCY ALERT</strong> — Refer immediately. Ambulance: <strong>${{amb}}</strong>`;
     }}
-    // CHANGE 4: emergency button is permanently hidden — do NOT show it here
-    // (old code did: document.getElementById('emergency-btn').style.display = 'flex')
   }} else {{
     overlay?.classList.remove('active');
     renderProviderBanner();
-    // CHANGE 4: do not restore button visibility on clear either
   }}
 }}
 
@@ -474,7 +479,8 @@ async function send(override) {{
 
   try {{
     let reply;
-    if (PROVIDER.token && PROVIDER.name !== 'demo' && isOnline) {{
+    const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
+    if (isLive && isOnline) {{
       reply = await callAIWithRetry();
     }} else if (!isOnline) {{
       offlineQueue.push({{ text, ts: Date.now() }});
@@ -842,9 +848,7 @@ function exportSession() {{
   URL.revokeObjectURL(url);
 }}
 
-// ─── EMERGENCY BUTTON — kept for triggerEmergency() API completeness ──────
-// CHANGE 4: button is hidden in HTML with display:none !important and
-//           setEmergencyMode() no longer un-hides it, so users never see it.
+// ─── EMERGENCY — business logic intact, button hidden in UI ───────────────
 function triggerEmergency() {{
   setEmergencyMode(true);
   addMsg('system', '🚨 Emergency protocol activated', {{ noFeedback: true }});
@@ -878,7 +882,6 @@ function newSession() {{
   emergencyMode = false; setEmergencyMode(false);
   document.getElementById('chat-container').innerHTML = '';
   renderProviderBanner();
-  // CHANGE 1: always go straight to showGreeting — consent is disabled
   showGreeting();
   updateEvalStats();
 }}

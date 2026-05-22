@@ -171,11 +171,11 @@
     }
   },
   "provider": {
-    "name": "demo",
-    "model": "demo",
-    "provider_type": "demo"
+    "name": "anthropic",
+    "model": "claude-sonnet-4-20250514",
+    "provider_type": "anthropic"
   },
   "protocol_version": "1.0.0",
-  "build_hash": "b8d1d994",
-  "built_at": "2026-05-21T18:51:22.544739+00:00"
+  "build_hash": "01d835b3",
+  "built_at": "2026-05-22T07:22:37.029565+00:00"
 }

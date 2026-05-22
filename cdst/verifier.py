@@ -35,7 +35,9 @@ class ProviderVerifier:
 
         if not found:
             log.warning(
-                "No API keys found — CDST will run in demo/offline mode")
+                "No API keys found locally — chat.js will use __API_TOKEN__ "
+                "placeholder; GitHub Actions injects the real key at deploy time."
+            )
             return None
 
         winner = found[0]

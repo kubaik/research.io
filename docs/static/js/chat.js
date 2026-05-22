@@ -1,18 +1,19 @@
 /* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
-/* Provider: demo | Model: demo | Built: 2026-05-21 18:51 UTC | Hash: b8d1d994 */
+/* Provider: anthropic | Model: claude-sonnet-4-20250514 | Built: 2026-05-22 07:22 UTC | Hash: 01d835b3 */
 
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
+// __API_TOKEN__ is replaced by GitHub Actions at deploy time — never a real key in git.
 const PROVIDER = {
-  token:      ``,
-  endpoint:   ``,
-  model:      `demo`,
-  name:       `demo`,
-  authHeader: `Bearer`,
-  apiVersion: ``,
-  type:       `demo`,
+  token:      `__API_TOKEN__`,
+  endpoint:   `https://api.anthropic.com/v1/messages`,
+  model:      `claude-sonnet-4-20250514`,
+  name:       `anthropic`,
+  authHeader: `x-api-key`,
+  apiVersion: `2023-06-01`,
+  type:       `anthropic`,
 };
 
 // ─── BOT CONFIG ───────────────────────────────────────────────────────────
@@ -31,8 +32,7 @@ const EVAL = {
   arm:             'intervention',
   facilityId:      'FACILITY-001',
   protocolVersion: '1.0.0',
-  buildHash:       'b8d1d994',
-  // CHANGE 1: consentRequired hard-coded false — consent screen never shown
+  buildHash:       '01d835b3',
   consentRequired: false,
   consentText:     `This tool is part of a research evaluation. Your de-identified interactions may be used to assess AI clinical decision support quality. No patient names or identifiers are recorded. You may withdraw at any time.`,
   serverLogUrl:    ``,
@@ -108,7 +108,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(e => console.warn('SW:', e));
   }
-  // CHANGE 1: always go straight to initApp — consent screen is disabled
   initApp();
 });
 
@@ -121,7 +120,16 @@ function initApp() {
   loadLocaleFromStorage();
 
   const inp = document.getElementById('user-input');
-  inp?.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  inp?.addEventListener('keydown', e => {
+    // On mobile (no physical keyboard), Enter should NOT auto-submit — let
+    // the user use the send button. On desktop, Enter submits, Shift+Enter
+    // adds a newline. We detect "mobile-ish" by checking maxTouchPoints.
+    const isMobile = navigator.maxTouchPoints > 0;
+    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
+      e.preventDefault();
+      send();
+    }
+  });
   inp?.addEventListener('input', autoResize);
 }
 
@@ -131,45 +139,37 @@ function autoResize() {
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
-// ─── CONSENT — kept for API completeness but screen is never shown ─────────
-function showConsentScreen() {
-  // CHANGE 1: no-op — consent is disabled; call initApp directly
-  initApp();
-}
-
+// ─── CONSENT — disabled, kept for API completeness ────────────────────────
+function showConsentScreen() { initApp(); }
 function giveConsent() {
   EVAL.consentGiven     = true;
   EVAL.consentTimestamp = new Date().toISOString();
   document.getElementById('consent-overlay')?.classList.add('hidden');
   initApp();
-  logEvalEvent({ type: 'consent', given: true, ts: EVAL.consentTimestamp });
 }
-
 function declineConsent() {
   EVAL.consentGiven = false;
   EVAL.enabled      = false;
   document.getElementById('consent-overlay')?.classList.add('hidden');
   initApp();
-  logEvalEvent({ type: 'consent', given: false });
 }
 
 // ─── PROVIDER BANNER ──────────────────────────────────────────────────────
-// CHANGE 2: banner shows only connection status — no model name, no provider
-//           name, no session ID. Demo mode shows a plain warning; live mode
-//           shows a clean "Live AI — Clinical Decision Support Tool" line.
+// Shows only live/demo status — no model name, no provider, no session ID.
 function renderProviderBanner() {
   const el  = document.getElementById('safety-banner');
   const dot = document.getElementById('status-dot');
   if (!el) return;
 
-  if (!PROVIDER.token || PROVIDER.name === 'demo') {
+  const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
+  if (!isLive) {
     el.className = 'status-demo';
-    el.innerHTML = '⚠️ &nbsp;Demo mode — set an API key in GitHub Secrets to enable live AI.';
+    el.innerHTML = '⚠️ &nbsp;Demo mode — AI responses are illustrative only. Add an API key in GitHub Secrets to enable live AI.';
     if (dot) dot.className = 'status-dot offline';
   } else {
     el.className = 'status-live';
-    // CHANGE 2: removed model name, provider name and session ID from this string
     el.innerHTML = '✅ &nbsp;Live AI — Clinical Decision Support Tool';
+    if (dot) dot.className = 'status-dot';
   }
 }
 
@@ -196,12 +196,9 @@ function setEmergencyMode(on) {
       banner.className = 'status-emergency';
       banner.innerHTML = `🚨 &nbsp;<strong>EMERGENCY ALERT</strong> — Refer immediately. Ambulance: <strong>${amb}</strong>`;
     }
-    // CHANGE 4: emergency button is permanently hidden — do NOT show it here
-    // (old code did: document.getElementById('emergency-btn').style.display = 'flex')
   } else {
     overlay?.classList.remove('active');
     renderProviderBanner();
-    // CHANGE 4: do not restore button visibility on clear either
   }
 }
 
@@ -423,7 +420,8 @@ async function send(override) {
 
   try {
     let reply;
-    if (PROVIDER.token && PROVIDER.name !== 'demo' && isOnline) {
+    const isLive = PROVIDER.token && PROVIDER.token !== '__API_TOKEN__' && PROVIDER.name !== 'demo';
+    if (isLive && isOnline) {
       reply = await callAIWithRetry();
     } else if (!isOnline) {
       offlineQueue.push({ text, ts: Date.now() });
@@ -791,9 +789,7 @@ function exportSession() {
   URL.revokeObjectURL(url);
 }
 
-// ─── EMERGENCY BUTTON — kept for triggerEmergency() API completeness ──────
-// CHANGE 4: button is hidden in HTML with display:none !important and
-//           setEmergencyMode() no longer un-hides it, so users never see it.
+// ─── EMERGENCY — business logic intact, button hidden in UI ───────────────
 function triggerEmergency() {
   setEmergencyMode(true);
   addMsg('system', '🚨 Emergency protocol activated', { noFeedback: true });
@@ -827,7 +823,6 @@ function newSession() {
   emergencyMode = false; setEmergencyMode(false);
   document.getElementById('chat-container').innerHTML = '';
   renderProviderBanner();
-  // CHANGE 1: always go straight to showGreeting — consent is disabled
   showGreeting();
   updateEvalStats();
 }

@@ -1,17 +1,9 @@
-name: HealthAssist CDST — Build & Deploy
+name: HealthAssist CDST — Deploy
 
 on:
-  schedule:
-    - cron: "0 4 * * *" # Daily 4 AM UTC rebuild
-  workflow_dispatch:
-    inputs:
-      force_rebuild:
-        description: "Force full rebuild"
-        required: false
-        default: false
-        type: boolean
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,9 +15,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -34,84 +26,61 @@ jobs:
       # ── 1. Checkout ────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4.2.2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
 
-      # ── 2. Python setup ────────────────────────────────────────────
-      - name: Set up Python
-        uses: actions/setup-python@v5.4.0
-        with:
-          python-version: "3.11"
-          cache: "pip"
-
-      - name: Install dependencies
+      # ── 2. Verify docs/ exists ─────────────────────────────────────
+      - name: Verify docs output
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      # ── 3. Verify secrets (priority order) ────────────────────────
-      # ANTHROPIC_API_KEY  = Claude claude-sonnet-4-20250514 (recommended — best clinical reasoning)
-      # OPENAI_API_KEY     = GPT-4o (strong alternative)
-      # GIT_TOKEN          = GitHub Models / gpt-4o (free tier)
-      # GROQ_API_KEY       = Llama 3.3 70B (fast, free tier)
-      # MISTRAL_API_KEY    = Mistral Small (fallback)
-      - name: Verify secrets
-        run: |
-          for VAR in ANTHROPIC_API_KEY OPENAI_API_KEY GIT_TOKEN GROQ_API_KEY MISTRAL_API_KEY; do
-            if [ -z "${!VAR}" ]; then
-              echo "MISSING: $VAR"
-            else
-              echo "OK: $VAR is set"
-            fi
-          done
-          # Require at least one key
-          if [ -z "$ANTHROPIC_API_KEY" ] && [ -z "$OPENAI_API_KEY" ] && \
-             [ -z "$GIT_TOKEN" ] && [ -z "$GROQ_API_KEY" ] && [ -z "$MISTRAL_API_KEY" ]; then
-            echo "WARNING: No API keys set — CDST will run in demo/offline mode"
-          fi
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-
-      # ── 4. Init config if missing ──────────────────────────────────
-      - name: Initialize config if needed
-        run: |
-          [ -f "config.yaml" ] && echo "config.yaml exists" \
-            || python chatbot_system.py init
-
-      # ── 5. Build ───────────────────────────────────────────────────
-      - name: Build CDST
-        env:
-          BUILD_OUTPUT_DIR: _site
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-        run: |
-          python chatbot_system.py auto || {
-            echo "WARNING: auto failed — falling back to build only"
-            python chatbot_system.py build
-          }
-
-      # ── 6. Verify output ───────────────────────────────────────────
-      - name: Verify generated content
-        run: |
-          [ -f "_site/index.html" ]                       || { echo "ERROR: no index.html";       exit 1; }
-          [ -f "_site/static/js/chat.js" ]                || { echo "ERROR: no chat.js";          exit 1; }
-          [ -f "_site/static/css/chat.css" ]              || { echo "ERROR: no chat.css";         exit 1; }
-          [ -f "_site/config.json" ]                      || { echo "ERROR: no config.json";      exit 1; }
-          [ -f "_site/static/data/protocols.json" ]       || { echo "ERROR: no protocols.json";   exit 1; }
+          [ -f "docs/index.html" ]                       || { echo "ERROR: docs/index.html missing — run: python chatbot_system.py build"; exit 1; }
+          [ -f "docs/static/js/chat.js" ]                || { echo "ERROR: docs/static/js/chat.js missing";   exit 1; }
+          [ -f "docs/static/css/chat.css" ]              || { echo "ERROR: docs/static/css/chat.css missing"; exit 1; }
+          [ -f "docs/config.json" ]                      || { echo "ERROR: docs/config.json missing";          exit 1; }
+          [ -f "docs/static/data/protocols.json" ]       || { echo "ERROR: docs/static/data/protocols.json missing"; exit 1; }
           echo "✅ All output files present"
           for f in index.html static/js/chat.js static/css/chat.css config.json static/data/protocols.json; do
-            echo "$f : $(wc -c < _site/$f) bytes"
+            echo "$f : $(wc -c < docs/$f) bytes"
           done
 
-      # ── 7. Deploy ──────────────────────────────────────────────────
+      # ── 3. Inject API key into chat.js at deploy time ──────────────
+      # The token placeholder __API_TOKEN__ is replaced with the real secret.
+      # This means NO secret is ever stored in the repository.
+      - name: Inject API token
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: |
+          cp -r docs _site
+
+          # Determine which key is active (priority order matches config)
+          ACTIVE_TOKEN=""
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            ACTIVE_TOKEN="$ANTHROPIC_API_KEY"
+            echo "Using ANTHROPIC_API_KEY"
+          elif [ -n "$OPENAI_API_KEY" ]; then
+            ACTIVE_TOKEN="$OPENAI_API_KEY"
+            echo "Using OPENAI_API_KEY"
+          elif [ -n "$GIT_TOKEN" ]; then
+            ACTIVE_TOKEN="$GIT_TOKEN"
+            echo "Using GIT_TOKEN"
+          elif [ -n "$GROQ_API_KEY" ]; then
+            ACTIVE_TOKEN="$GROQ_API_KEY"
+            echo "Using GROQ_API_KEY"
+          elif [ -n "$MISTRAL_API_KEY" ]; then
+            ACTIVE_TOKEN="$MISTRAL_API_KEY"
+            echo "Using MISTRAL_API_KEY"
+          else
+            echo "No API key set — deploying in demo mode"
+          fi
+
+          # Replace placeholder in the copied _site (never modifies docs/)
+          if [ -n "$ACTIVE_TOKEN" ]; then
+            sed -i "s|__API_TOKEN__|${ACTIVE_TOKEN}|g" _site/static/js/chat.js
+            echo "✅ Token injected into _site/static/js/chat.js"
+          fi
+
+      # ── 4. Deploy ──────────────────────────────────────────────────
       - name: Setup GitHub Pages
         uses: actions/configure-pages@v5.0.0
 
@@ -124,7 +93,7 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4.0.5
 
-      # ── 8. Summary ─────────────────────────────────────────────────
+      # ── 5. Summary ─────────────────────────────────────────────────
       - name: Summary
         run: |
           {
@@ -133,22 +102,10 @@ jobs:
             echo "**Trigger**: ${{ github.event_name }}"
             echo "**Run**: #${{ github.run_number }} — $(date -u '+%Y-%m-%d %H:%M UTC')"
             echo ""
-            echo "### Build output"
+            echo "### Deployed files"
             echo "| File | Size |"
             echo "|---|---|"
             for f in index.html static/js/chat.js static/css/chat.css config.json static/data/protocols.json; do
-              echo "| $f | $(wc -c < _site/$f) bytes |"
+              echo "| $f | $(wc -c < docs/$f) bytes |"
             done
-            echo ""
-            echo "### Active provider"
-            python -c "
-          import json, pathlib
-          cfg = json.loads(pathlib.Path('_site/config.json').read_text())
-          p = cfg.get('provider', {})
-          e = cfg.get('evaluation', {})
-          print(f'| Provider | {p.get(\"name\",\"?\")} |')
-          print(f'| Model    | {p.get(\"model\",\"?\")} |')
-          print(f'| Study ID | {e.get(\"study_id\",\"?\")} |')
-          print(f'| Pathway  | {e.get(\"pathway\",\"?\")} |')
-            "
           } >> $GITHUB_STEP_SUMMARY

@@ -9,22 +9,25 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
-from .constants import PROTOCOL_VERSION, ROOT
+from .constants import PROTOCOL_VERSION, ROOT, TOKEN_PLACEHOLDER
 
 
 class BuildContext:
     """
     Immutable value object produced once per build.
-    Encapsulates the output directory, content hash, active provider, and
-    the resolved API token so nothing else has to call os.getenv directly.
+
+    token is always TOKEN_PLACEHOLDER ("__API_TOKEN__") — the real secret
+    is injected by GitHub Actions at deploy time via sed, so no key is
+    ever committed to the repository.
     """
 
     def __init__(self, cfg: dict[str, Any]) -> None:
         self.cfg = cfg
-        self.output_dir = ROOT / os.getenv("BUILD_OUTPUT_DIR", "docs")
+        self.output_dir = ROOT / "docs"
         self.build_hash = self._compute_hash()
         self.provider = self._resolve_provider()
-        self.token = self._resolve_token()
+        # Always write the placeholder — CI replaces it with the real key.
+        self.token = TOKEN_PLACEHOLDER
         self.built_at = datetime.now(timezone.utc)
 
     # ------------------------------------------------------------------
@@ -58,12 +61,15 @@ class BuildContext:
         return hashlib.sha256(seed).hexdigest()[:8]
 
     def _resolve_provider(self) -> dict[str, Any] | None:
+        """
+        Determine which provider config to embed in chat.js.
+        Checks env vars to find the first configured provider so the
+        correct endpoint/model/auth settings are written — but the
+        actual token value is always TOKEN_PLACEHOLDER.
+        """
         for p in self.cfg["models"]["providers"]:
             if os.getenv(p["env_key"], ""):
                 return p
-        return None
-
-    def _resolve_token(self) -> str:
-        if not self.provider:
-            return ""
-        return os.getenv(self.provider["env_key"], "")
+        # No key set locally — default to anthropic config so the
+        # generated JS has the right endpoint/headers ready for CI injection.
+        return self.cfg["models"]["providers"][0]
