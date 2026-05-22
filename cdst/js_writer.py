@@ -4,10 +4,19 @@ JavaScript bundle (chat.js).
 
 Security model
 --------------
-The real API token is NEVER written here. Instead, the literal string
-TOKEN_PLACEHOLDER ("__API_TOKEN__") is embedded. GitHub Actions replaces
-that placeholder with the real secret at deploy time via `sed`, so no
-secret ever lands in the git repository.
+Real API tokens are NEVER written here. Instead, per-provider placeholders
+(e.g. __GIT_TOKEN__, __ANTHROPIC_API_KEY__) are embedded. GitHub Actions
+replaces each placeholder with the real secret at deploy time via `sed`,
+so no secret ever lands in the git repository.
+
+Multi-provider fallback
+-----------------------
+All configured providers are embedded as a JS array (PROVIDERS). At
+runtime the browser tries them in order, skipping any whose placeholder
+was never replaced (token still starts with '__'). This means:
+  • GIT_TOKEN (GitHub Models) is tried first.
+  • If it fails or is absent, Anthropic is tried next, then Groq, Mistral …
+  • No rebuild is needed to change priority — edit config.yaml providers order.
 """
 
 from __future__ import annotations
@@ -36,49 +45,62 @@ class JavaScriptWriter:
     def _js_escape(text: str) -> str:
         return text.replace("\\", "\\\\").replace("`", "\\`").replace("\n", "\\n")
 
+    def _build_providers_js(self) -> str:
+        """
+        Build the PROVIDERS JSON array.
+
+        Each provider's token field is a named placeholder like __GIT_TOKEN__
+        so GitHub Actions can inject the real secret with a targeted `sed`.
+        Providers with no secret set will keep the placeholder string and will
+        be skipped at runtime (token.startsWith('__') guard in JS).
+        """
+        providers = []
+        for p in self._cfg["models"]["providers"]:
+            placeholder = f"__{p['env_key']}__"   # e.g. __GIT_TOKEN__
+            providers.append({
+                "token":      placeholder,
+                "endpoint":   p["endpoint"],
+                "model":      p["model"],
+                "name":       p["name"],
+                "authHeader": p.get("auth_header", "Bearer"),
+                "apiVersion": p.get("api_version", ""),
+                "type":       p.get("provider_type", "openai"),
+            })
+        return json.dumps(providers, ensure_ascii=False, indent=2)
+
     def _render(self) -> str:
         ctx = self._ctx
         cfg = self._cfg
         bot = cfg["bot"]
         app = cfg["app"]
         eval_cfg = cfg.get("evaluation", {})
-        i18n_cfg = cfg.get("i18n", AppConfig.DEFAULTS["i18n"])
-        formulary = cfg.get("formulary", AppConfig.DEFAULTS["formulary"])
+        i18n_cfg = cfg.get("i18n",       AppConfig.DEFAULTS["i18n"])
+        formulary = cfg.get("formulary",  AppConfig.DEFAULTS["formulary"])
 
-        provider = ctx.provider
-        provider_type = provider.get(
-            "provider_type", "openai") if provider else "openai"
-        auth_header = provider.get(
-            "auth_header",   "Bearer") if provider else "Bearer"
-        api_version = provider.get("api_version",   "") if provider else ""
-        endpoint = provider["endpoint"] if provider else ""
-
+        providers_json = self._build_providers_js()
         default_locale = i18n_cfg.get("default_locale", "en")
 
         return f"""/* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
-/* Provider: {ctx.provider_name} | Model: {ctx.model_id} | Built: {ctx.built_at_str} | Hash: {ctx.build_hash} */
+/* Model: {ctx.model_id} | Built: {ctx.built_at_str} | Hash: {ctx.build_hash} */
 
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
-// __API_TOKEN__ is replaced by GitHub Actions at deploy time.
-// No secret is ever stored in the repository.
-const PROVIDER = {{
-  token:      `{ctx.token}`,
-  endpoint:   `{endpoint}`,
-  model:      `{ctx.model_id}`,
-  name:       `{ctx.provider_name}`,
-  authHeader: `{auth_header}`,
-  apiVersion: `{api_version}`,
-  type:       `{provider_type}`,
-}};
+// Each __ENV_KEY__ placeholder is replaced by GitHub Actions at deploy time.
+// Providers whose placeholder is never replaced are skipped at runtime.
+// Priority is determined by the order of the providers list in config.yaml.
+const PROVIDERS = {providers_json};
+
+// Active provider index — advances automatically on failure
+let _providerIdx = 0;
+function getProvider() {{ return PROVIDERS[_providerIdx]; }}
 
 // ─── BOT CONFIG ───────────────────────────────────────────────────────────
 const BOT_CONFIG = {{
   system:         `{self._js_escape(bot["system_prompt"])}`,
   greeting:       `{self._js_escape(bot["greeting"])}`,
-  quickReplies:   {json.dumps(bot["quick_replies"],        ensure_ascii=False)},
+  quickReplies:   {json.dumps(bot["quick_replies"],         ensure_ascii=False)},
   safetyKeywords: {json.dumps(bot.get("safety_keywords", []), ensure_ascii=False)},
 }};
 
@@ -172,7 +194,6 @@ function initApp() {{
 
   const inp = document.getElementById('user-input');
   inp?.addEventListener('keydown', e => {{
-    // Desktop: Enter submits; mobile uses the send button
     if (e.key === 'Enter' && !e.shiftKey && navigator.maxTouchPoints === 0) {{
       e.preventDefault();
       send();
@@ -458,47 +479,92 @@ async function send(override) {{
 }}
 
 // ─── AI CALL STACK ────────────────────────────────────────────────────────
+/**
+ * callAIWithRetry — outer loop over providers, inner loop over retries.
+ *
+ * For each provider:
+ *   1. Skip if the placeholder was never replaced (no real token).
+ *   2. Try up to (maxRetries + 1) times with exponential back-off.
+ *   3. On AbortError (timeout) move straight to the next provider — don't retry.
+ *   4. On any other error, retry up to maxRetries times, then move on.
+ *
+ * Throws only when every provider has been exhausted.
+ */
 async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
-  let lastErr;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {{
-    const controller = new AbortController();
-    const timer      = setTimeout(() => controller.abort(), timeoutMs);
-    try {{
-      const reply = await callAI(controller.signal);
-      clearTimeout(timer);
-      return reply;
-    }} catch (err) {{
-      clearTimeout(timer);
-      lastErr = err;
-      if (err.name === 'AbortError') throw new Error(`Request timed out after ${{timeoutMs / 1000}}s`);
-      if (attempt < maxRetries) {{
-        await sleep(1000 * (attempt + 1));
-        console.warn(`[CDST] Retry ${{attempt + 1}}/${{maxRetries}}: ${{err.message}}`);
+  const errors = [];
+
+  for (let pi = 0; pi < PROVIDERS.length; pi++) {{
+    _providerIdx    = pi;
+    const provider  = PROVIDERS[pi];
+
+    // Skip providers whose placeholder token was never injected
+    if (!provider.token || provider.token.startsWith('__')) {{
+      console.warn(`[CDST] Skipping ${{provider.name}} — no token injected`);
+      continue;
+    }}
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {{
+      const controller = new AbortController();
+      const timer      = setTimeout(() => controller.abort(), timeoutMs);
+      try {{
+        const reply = await callAI(controller.signal, provider);
+        clearTimeout(timer);
+        if (pi > 0) {{
+          console.info(`[CDST] Fell back to ${{provider.name}} after ${{pi}} failure(s)`);
+        }}
+        return reply;
+      }} catch (err) {{
+        clearTimeout(timer);
+
+        if (err.name === 'AbortError') {{
+          // Timeout — no point retrying the same provider
+          const msg = `${{provider.name}} timed out after ${{timeoutMs / 1000}}s`;
+          console.warn(`[CDST] ${{msg}}`);
+          errors.push(msg);
+          break;
+        }}
+
+        if (attempt < maxRetries) {{
+          const delay = 800 * (attempt + 1);
+          console.warn(`[CDST] ${{provider.name}} retry ${{attempt + 1}}/${{maxRetries}}: ${{err.message}}`);
+          await sleep(delay);
+        }} else {{
+          const msg = `${{provider.name}}: ${{err.message}}`;
+          console.warn(`[CDST] ${{msg}} — trying next provider`);
+          errors.push(msg);
+        }}
       }}
     }}
   }}
-  throw lastErr;
+
+  throw new Error(
+    `All providers failed or unavailable.${{errors.length ? ' Details: ' + errors.join(' | ') : ''}}`
+  );
 }}
 
-async function callAI(signal) {{
-  return PROVIDER.type === 'anthropic' ? callAnthropic(signal) : callOpenAICompat(signal);
+/** Dispatch to the correct API format based on provider.type */
+async function callAI(signal, provider) {{
+  return provider.type === 'anthropic'
+    ? callAnthropic(signal, provider)
+    : callOpenAICompat(signal, provider);
 }}
 
-async function callAnthropic(signal) {{
+/** Anthropic Messages API */
+async function callAnthropic(signal, provider) {{
   const messages = history.map(m => ({{
     role:    m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }}));
-  const res = await fetch(PROVIDER.endpoint, {{
+  const res = await fetch(provider.endpoint, {{
     method: 'POST', signal,
     headers: {{
-      'Content-Type':    'application/json',
-      'x-api-key':       PROVIDER.token,
-      'anthropic-version': PROVIDER.apiVersion || '2023-06-01',
+      'Content-Type':      'application/json',
+      'x-api-key':         provider.token,
+      'anthropic-version': provider.apiVersion || '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     }},
     body: JSON.stringify({{
-      model:      PROVIDER.model,
+      model:      provider.model,
       max_tokens: 1024,
       system:     BOT_CONFIG.system,
       messages,
@@ -512,15 +578,16 @@ async function callAnthropic(signal) {{
   return data.content?.[0]?.text?.trim() || 'No response received.';
 }}
 
-async function callOpenAICompat(signal) {{
-  const res = await fetch(PROVIDER.endpoint, {{
+/** OpenAI-compatible API (GitHub Models, OpenAI, Groq, Mistral) */
+async function callOpenAICompat(signal, provider) {{
+  const res = await fetch(provider.endpoint, {{
     method: 'POST', signal,
     headers: {{
       'Content-Type':  'application/json',
-      'Authorization': `${{PROVIDER.authHeader}} ${{PROVIDER.token}}`,
+      'Authorization': `${{provider.authHeader}} ${{provider.token}}`,
     }},
     body: JSON.stringify({{
-      model:       PROVIDER.model,
+      model:       provider.model,
       messages:    [{{ role: 'system', content: BOT_CONFIG.system }}, ...history],
       max_tokens:  1024,
       temperature: 0.2,

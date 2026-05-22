@@ -30,56 +30,92 @@ jobs:
       # ── 2. Verify docs/ exists ─────────────────────────────────────
       - name: Verify docs output
         run: |
-          [ -f "docs/index.html" ]                       || { echo "ERROR: docs/index.html missing — run: python chatbot_system.py build"; exit 1; }
-          [ -f "docs/static/js/chat.js" ]                || { echo "ERROR: docs/static/js/chat.js missing";   exit 1; }
-          [ -f "docs/static/css/chat.css" ]              || { echo "ERROR: docs/static/css/chat.css missing"; exit 1; }
-          [ -f "docs/config.json" ]                      || { echo "ERROR: docs/config.json missing";          exit 1; }
-          [ -f "docs/static/data/protocols.json" ]       || { echo "ERROR: docs/static/data/protocols.json missing"; exit 1; }
+          [ -f "docs/index.html" ]                 || { echo "ERROR: docs/index.html missing — run: python chatbot_system.py build"; exit 1; }
+          [ -f "docs/static/js/chat.js" ]          || { echo "ERROR: docs/static/js/chat.js missing";   exit 1; }
+          [ -f "docs/static/css/chat.css" ]        || { echo "ERROR: docs/static/css/chat.css missing"; exit 1; }
+          [ -f "docs/config.json" ]                || { echo "ERROR: docs/config.json missing";          exit 1; }
+          [ -f "docs/static/data/protocols.json" ] || { echo "ERROR: docs/static/data/protocols.json missing"; exit 1; }
           echo "✅ All output files present"
           for f in index.html static/js/chat.js static/css/chat.css config.json static/data/protocols.json; do
             echo "$f : $(wc -c < docs/$f) bytes"
           done
 
-      # ── 3. Inject API key into chat.js at deploy time ──────────────
-      # The token placeholder __API_TOKEN__ is replaced with the real secret.
-      # This means NO secret is ever stored in the repository.
-      # ── 3. Inject API key into chat.js at deploy time ──────────────
-      # GIT_TOKEN (GitHub Models) is the primary key.
-      # __API_TOKEN__ placeholder is replaced; NO secret is ever in the repo.
-      - name: Inject API token
+      # ── 3. Inject API tokens into chat.js ─────────────────────────
+      #
+      # Each provider has its own named placeholder in the JS bundle:
+      #   __GIT_TOKEN__         → GitHub Models  (tried first)
+      #   __ANTHROPIC_API_KEY__ → Anthropic Claude
+      #   __OPENAI_API_KEY__    → OpenAI
+      #   __GROQ_API_KEY__      → Groq
+      #   __MISTRAL_API_KEY__   → Mistral
+      #
+      # Only secrets that are set in GitHub → Settings → Secrets → Actions
+      # will be injected. The rest stay as __PLACEHOLDER__ strings and are
+      # silently skipped by the browser at runtime (startsWith('__') guard).
+      #
+      # SECURITY: No secret is ever stored in the repository. Placeholders
+      # are replaced only inside the ephemeral _site/ copy used for the
+      # Pages artifact — the docs/ source files are never modified.
+      # ──────────────────────────────────────────────────────────────
+      - name: Inject API tokens
         env:
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: |
           cp -r docs _site
 
-          # Priority: GIT_TOKEN first (GitHub Models), then others
-          ACTIVE_TOKEN=""
+          INJECTED=0
+
           if [ -n "$GIT_TOKEN" ]; then
-            ACTIVE_TOKEN="$GIT_TOKEN"
-            echo "Using GIT_TOKEN (GitHub Models)"
-          elif [ -n "$ANTHROPIC_API_KEY" ]; then
-            ACTIVE_TOKEN="$ANTHROPIC_API_KEY"
-            echo "Using ANTHROPIC_API_KEY"
-          elif [ -n "$OPENAI_API_KEY" ]; then
-            ACTIVE_TOKEN="$OPENAI_API_KEY"
-            echo "Using OPENAI_API_KEY"
-          elif [ -n "$GROQ_API_KEY" ]; then
-            ACTIVE_TOKEN="$GROQ_API_KEY"
-            echo "Using GROQ_API_KEY"
-          elif [ -n "$MISTRAL_API_KEY" ]; then
-            ACTIVE_TOKEN="$MISTRAL_API_KEY"
-            echo "Using MISTRAL_API_KEY"
+            sed -i "s|__GIT_TOKEN__|${GIT_TOKEN}|g" _site/static/js/chat.js
+            echo "✅ GIT_TOKEN injected         (GitHub Models — primary)"
+            INJECTED=$((INJECTED + 1))
           else
-            echo "No API key set — deploying in demo mode"
+            echo "⏭  GIT_TOKEN not set          — provider will be skipped at runtime"
           fi
 
-          if [ -n "$ACTIVE_TOKEN" ]; then
-            sed -i "s|__API_TOKEN__|${ACTIVE_TOKEN}|g" _site/static/js/chat.js
-            echo "Token injected into _site/static/js/chat.js"
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            sed -i "s|__ANTHROPIC_API_KEY__|${ANTHROPIC_API_KEY}|g" _site/static/js/chat.js
+            echo "✅ ANTHROPIC_API_KEY injected  (Claude — fallback 1)"
+            INJECTED=$((INJECTED + 1))
+          else
+            echo "⏭  ANTHROPIC_API_KEY not set  — provider will be skipped at runtime"
+          fi
+
+          if [ -n "$OPENAI_API_KEY" ]; then
+            sed -i "s|__OPENAI_API_KEY__|${OPENAI_API_KEY}|g" _site/static/js/chat.js
+            echo "✅ OPENAI_API_KEY injected     (OpenAI — fallback 2)"
+            INJECTED=$((INJECTED + 1))
+          else
+            echo "⏭  OPENAI_API_KEY not set     — provider will be skipped at runtime"
+          fi
+
+          if [ -n "$GROQ_API_KEY" ]; then
+            sed -i "s|__GROQ_API_KEY__|${GROQ_API_KEY}|g" _site/static/js/chat.js
+            echo "✅ GROQ_API_KEY injected       (Groq — fallback 3)"
+            INJECTED=$((INJECTED + 1))
+          else
+            echo "⏭  GROQ_API_KEY not set       — provider will be skipped at runtime"
+          fi
+
+          if [ -n "$MISTRAL_API_KEY" ]; then
+            sed -i "s|__MISTRAL_API_KEY__|${MISTRAL_API_KEY}|g" _site/static/js/chat.js
+            echo "✅ MISTRAL_API_KEY injected    (Mistral — fallback 4)"
+            INJECTED=$((INJECTED + 1))
+          else
+            echo "⏭  MISTRAL_API_KEY not set    — provider will be skipped at runtime"
+          fi
+
+          echo ""
+          if [ "$INJECTED" -eq 0 ]; then
+            echo "⚠️  WARNING: No API keys were injected."
+            echo "   The app will deploy but the AI service will be unavailable."
+            echo "   Add at least one secret in: GitHub → Settings → Secrets → Actions"
+          else
+            echo "✅ $INJECTED token(s) injected. Remaining placeholders will be skipped by the browser."
           fi
 
       # ── 4. Deploy ──────────────────────────────────────────────────
@@ -108,6 +144,15 @@ jobs:
             echo "| File | Size |"
             echo "|---|---|"
             for f in index.html static/js/chat.js static/css/chat.css config.json static/data/protocols.json; do
-              echo "| $f | $(wc -c < docs/$f) bytes |"
+              echo "| \`$f\` | $(wc -c < docs/$f) bytes |"
             done
+            echo ""
+            echo "### Provider fallback order"
+            echo "| # | Provider | Secret | Status |"
+            echo "|---|---|---|---|"
+            echo "| 1 | GitHub Models | \`GIT_TOKEN\` | ${{ secrets.GIT_TOKEN != '' && '✅ Active' || '⏭ Skipped' }} |"
+            echo "| 2 | Anthropic     | \`ANTHROPIC_API_KEY\` | ${{ secrets.ANTHROPIC_API_KEY != '' && '✅ Active' || '⏭ Skipped' }} |"
+            echo "| 3 | OpenAI        | \`OPENAI_API_KEY\` | ${{ secrets.OPENAI_API_KEY != '' && '✅ Active' || '⏭ Skipped' }} |"
+            echo "| 4 | Groq          | \`GROQ_API_KEY\` | ${{ secrets.GROQ_API_KEY != '' && '✅ Active' || '⏭ Skipped' }} |"
+            echo "| 5 | Mistral       | \`MISTRAL_API_KEY\` | ${{ secrets.MISTRAL_API_KEY != '' && '✅ Active' || '⏭ Skipped' }} |"
           } >> $GITHUB_STEP_SUMMARY

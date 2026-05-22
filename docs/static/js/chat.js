@@ -1,21 +1,64 @@
 /* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
-/* Provider: github | Model: gpt-4o | Built: 2026-05-22 09:05 UTC | Hash: 01d835b3 */
+/* Model: gpt-4o | Built: 2026-05-22 09:38 UTC | Hash: 01d835b3 */
 
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
-// __API_TOKEN__ is replaced by GitHub Actions at deploy time.
-// No secret is ever stored in the repository.
-const PROVIDER = {
-  token:      `__API_TOKEN__`,
-  endpoint:   `https://models.github.ai/inference/chat/completions`,
-  model:      `gpt-4o`,
-  name:       `github`,
-  authHeader: `Bearer`,
-  apiVersion: ``,
-  type:       `openai`,
-};
+// Each __ENV_KEY__ placeholder is replaced by GitHub Actions at deploy time.
+// Providers whose placeholder is never replaced are skipped at runtime.
+// Priority is determined by the order of the providers list in config.yaml.
+const PROVIDERS = [
+  {
+    "token": "__GIT_TOKEN__",
+    "endpoint": "https://models.github.ai/inference/chat/completions",
+    "model": "gpt-4o",
+    "name": "github",
+    "authHeader": "Bearer",
+    "apiVersion": "",
+    "type": "openai"
+  },
+  {
+    "token": "__ANTHROPIC_API_KEY__",
+    "endpoint": "https://api.anthropic.com/v1/messages",
+    "model": "claude-sonnet-4-20250514",
+    "name": "anthropic",
+    "authHeader": "x-api-key",
+    "apiVersion": "2023-06-01",
+    "type": "anthropic"
+  },
+  {
+    "token": "__OPENAI_API_KEY__",
+    "endpoint": "https://api.openai.com/v1/chat/completions",
+    "model": "gpt-4o",
+    "name": "openai",
+    "authHeader": "Bearer",
+    "apiVersion": "",
+    "type": "openai"
+  },
+  {
+    "token": "__GROQ_API_KEY__",
+    "endpoint": "https://api.groq.com/openai/v1/chat/completions",
+    "model": "llama-3.3-70b-versatile",
+    "name": "groq",
+    "authHeader": "Bearer",
+    "apiVersion": "",
+    "type": "openai"
+  },
+  {
+    "token": "__MISTRAL_API_KEY__",
+    "endpoint": "https://api.mistral.ai/v1/chat/completions",
+    "model": "mistral-small-latest",
+    "name": "mistral",
+    "authHeader": "Bearer",
+    "apiVersion": "",
+    "type": "openai"
+  }
+];
+
+// Active provider index — advances automatically on failure
+let _providerIdx = 0;
+function getProvider() { return PROVIDERS[_providerIdx]; }
 
 // ─── BOT CONFIG ───────────────────────────────────────────────────────────
 const BOT_CONFIG = {
@@ -115,7 +158,6 @@ function initApp() {
 
   const inp = document.getElementById('user-input');
   inp?.addEventListener('keydown', e => {
-    // Desktop: Enter submits; mobile uses the send button
     if (e.key === 'Enter' && !e.shiftKey && navigator.maxTouchPoints === 0) {
       e.preventDefault();
       send();
@@ -401,47 +443,92 @@ async function send(override) {
 }
 
 // ─── AI CALL STACK ────────────────────────────────────────────────────────
+/**
+ * callAIWithRetry — outer loop over providers, inner loop over retries.
+ *
+ * For each provider:
+ *   1. Skip if the placeholder was never replaced (no real token).
+ *   2. Try up to (maxRetries + 1) times with exponential back-off.
+ *   3. On AbortError (timeout) move straight to the next provider — don't retry.
+ *   4. On any other error, retry up to maxRetries times, then move on.
+ *
+ * Throws only when every provider has been exhausted.
+ */
 async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {
-  let lastErr;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const controller = new AbortController();
-    const timer      = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const reply = await callAI(controller.signal);
-      clearTimeout(timer);
-      return reply;
-    } catch (err) {
-      clearTimeout(timer);
-      lastErr = err;
-      if (err.name === 'AbortError') throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
-      if (attempt < maxRetries) {
-        await sleep(1000 * (attempt + 1));
-        console.warn(`[CDST] Retry ${attempt + 1}/${maxRetries}: ${err.message}`);
+  const errors = [];
+
+  for (let pi = 0; pi < PROVIDERS.length; pi++) {
+    _providerIdx    = pi;
+    const provider  = PROVIDERS[pi];
+
+    // Skip providers whose placeholder token was never injected
+    if (!provider.token || provider.token.startsWith('__')) {
+      console.warn(`[CDST] Skipping ${provider.name} — no token injected`);
+      continue;
+    }
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const controller = new AbortController();
+      const timer      = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const reply = await callAI(controller.signal, provider);
+        clearTimeout(timer);
+        if (pi > 0) {
+          console.info(`[CDST] Fell back to ${provider.name} after ${pi} failure(s)`);
+        }
+        return reply;
+      } catch (err) {
+        clearTimeout(timer);
+
+        if (err.name === 'AbortError') {
+          // Timeout — no point retrying the same provider
+          const msg = `${provider.name} timed out after ${timeoutMs / 1000}s`;
+          console.warn(`[CDST] ${msg}`);
+          errors.push(msg);
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          const delay = 800 * (attempt + 1);
+          console.warn(`[CDST] ${provider.name} retry ${attempt + 1}/${maxRetries}: ${err.message}`);
+          await sleep(delay);
+        } else {
+          const msg = `${provider.name}: ${err.message}`;
+          console.warn(`[CDST] ${msg} — trying next provider`);
+          errors.push(msg);
+        }
       }
     }
   }
-  throw lastErr;
+
+  throw new Error(
+    `All providers failed or unavailable.${errors.length ? ' Details: ' + errors.join(' | ') : ''}`
+  );
 }
 
-async function callAI(signal) {
-  return PROVIDER.type === 'anthropic' ? callAnthropic(signal) : callOpenAICompat(signal);
+/** Dispatch to the correct API format based on provider.type */
+async function callAI(signal, provider) {
+  return provider.type === 'anthropic'
+    ? callAnthropic(signal, provider)
+    : callOpenAICompat(signal, provider);
 }
 
-async function callAnthropic(signal) {
+/** Anthropic Messages API */
+async function callAnthropic(signal, provider) {
   const messages = history.map(m => ({
     role:    m.role === 'assistant' ? 'assistant' : 'user',
     content: m.content,
   }));
-  const res = await fetch(PROVIDER.endpoint, {
+  const res = await fetch(provider.endpoint, {
     method: 'POST', signal,
     headers: {
-      'Content-Type':    'application/json',
-      'x-api-key':       PROVIDER.token,
-      'anthropic-version': PROVIDER.apiVersion || '2023-06-01',
+      'Content-Type':      'application/json',
+      'x-api-key':         provider.token,
+      'anthropic-version': provider.apiVersion || '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model:      PROVIDER.model,
+      model:      provider.model,
       max_tokens: 1024,
       system:     BOT_CONFIG.system,
       messages,
@@ -455,15 +542,16 @@ async function callAnthropic(signal) {
   return data.content?.[0]?.text?.trim() || 'No response received.';
 }
 
-async function callOpenAICompat(signal) {
-  const res = await fetch(PROVIDER.endpoint, {
+/** OpenAI-compatible API (GitHub Models, OpenAI, Groq, Mistral) */
+async function callOpenAICompat(signal, provider) {
+  const res = await fetch(provider.endpoint, {
     method: 'POST', signal,
     headers: {
       'Content-Type':  'application/json',
-      'Authorization': `${PROVIDER.authHeader} ${PROVIDER.token}`,
+      'Authorization': `${provider.authHeader} ${provider.token}`,
     },
     body: JSON.stringify({
-      model:       PROVIDER.model,
+      model:       provider.model,
       messages:    [{ role: 'system', content: BOT_CONFIG.system }, ...history],
       max_tokens:  1024,
       temperature: 0.2,
