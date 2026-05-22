@@ -176,6 +176,14 @@ class AppConfig:
         "models": {
             "providers": [
                 {
+                    "name":          "github",
+                    "env_key":       "GIT_TOKEN",
+                    "endpoint":      "https://models.github.ai/inference/chat/completions",
+                    "model":         "gpt-4o",
+                    "auth_header":   "Bearer",
+                    "provider_type": "openai",
+                },
+                {
                     "name":          "anthropic",
                     "env_key":       "ANTHROPIC_API_KEY",
                     "endpoint":      "https://api.anthropic.com/v1/messages",
@@ -192,14 +200,7 @@ class AppConfig:
                     "auth_header":   "Bearer",
                     "provider_type": "openai",
                 },
-                {
-                    "name":          "github",
-                    "env_key":       "GIT_TOKEN",
-                    "endpoint":      "https://models.github.ai/inference/chat/completions",
-                    "model":         "gpt-4o",
-                    "auth_header":   "Bearer",
-                    "provider_type": "openai",
-                },
+
                 {
                     "name":          "groq",
                     "env_key":       "GROQ_API_KEY",

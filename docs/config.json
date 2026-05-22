@@ -171,11 +171,11 @@
     }
   },
   "provider": {
-    "name": "anthropic",
-    "model": "claude-sonnet-4-20250514",
-    "provider_type": "anthropic"
+    "name": "github",
+    "model": "gpt-4o",
+    "provider_type": "openai"
   },
   "protocol_version": "1.0.0",
   "build_hash": "01d835b3",
-  "built_at": "2026-05-22T08:50:50.151150+00:00"
+  "built_at": "2026-05-22T09:05:17.558618+00:00"
 }

@@ -147,6 +147,12 @@ formulary:
     dosing: 600mcg oral single dose for PPH prevention
 models:
   providers:
+  - name: github
+    env_key: GIT_TOKEN
+    endpoint: https://models.github.ai/inference/chat/completions
+    model: gpt-4o
+    auth_header: Bearer
+    provider_type: openai
   - name: anthropic
     env_key: ANTHROPIC_API_KEY
     endpoint: https://api.anthropic.com/v1/messages
@@ -157,12 +163,6 @@ models:
   - name: openai
     env_key: OPENAI_API_KEY
     endpoint: https://api.openai.com/v1/chat/completions
-    model: gpt-4o
-    auth_header: Bearer
-    provider_type: openai
-  - name: github
-    env_key: GIT_TOKEN
-    endpoint: https://models.github.ai/inference/chat/completions
     model: gpt-4o
     auth_header: Bearer
     provider_type: openai

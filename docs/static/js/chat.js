@@ -1,6 +1,6 @@
 /* HealthAssist CDST v1 — Auto-generated */
 /* EVAH-Aligned Clinical Decision Support Tool */
-/* Provider: anthropic | Model: claude-sonnet-4-20250514 | Built: 2026-05-22 08:50 UTC | Hash: 01d835b3 */
+/* Provider: github | Model: gpt-4o | Built: 2026-05-22 09:05 UTC | Hash: 01d835b3 */
 
 'use strict';
 
@@ -9,12 +9,12 @@
 // No secret is ever stored in the repository.
 const PROVIDER = {
   token:      `__API_TOKEN__`,
-  endpoint:   `https://api.anthropic.com/v1/messages`,
-  model:      `claude-sonnet-4-20250514`,
-  name:       `anthropic`,
-  authHeader: `x-api-key`,
-  apiVersion: `2023-06-01`,
-  type:       `anthropic`,
+  endpoint:   `https://models.github.ai/inference/chat/completions`,
+  model:      `gpt-4o`,
+  name:       `github`,
+  authHeader: `Bearer`,
+  apiVersion: ``,
+  type:       `openai`,
 };
 
 // ─── BOT CONFIG ───────────────────────────────────────────────────────────
