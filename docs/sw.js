@@ -1,7 +1,7 @@
-/* HealthAssist CDST — Service Worker v1  hash=01d835b3 */
+/* HealthAssist CDST — Service Worker v1  hash=7c0f4408 */
 'use strict';
 
-const CACHE = 'cdst-v01d835b3';
+const CACHE = 'cdst-v7c0f4408';
 const OFFLINE_ASSETS = [
   './', './index.html',
   './static/css/chat.css', './static/js/chat.js',

@@ -46,17 +46,9 @@ class JavaScriptWriter:
         return text.replace("\\", "\\\\").replace("`", "\\`").replace("\n", "\\n")
 
     def _build_providers_js(self) -> str:
-        """
-        Build the PROVIDERS JSON array.
-
-        Each provider's token field is a named placeholder like __GIT_TOKEN__
-        so GitHub Actions can inject the real secret with a targeted `sed`.
-        Providers with no secret set will keep the placeholder string and will
-        be skipped at runtime (token.startsWith('__') guard in JS).
-        """
         providers = []
         for p in self._cfg["models"]["providers"]:
-            placeholder = f"__{p['env_key']}__"   # e.g. __GIT_TOKEN__
+            placeholder = f"__{p['env_key']}__"
             providers.append({
                 "token":      placeholder,
                 "endpoint":   p["endpoint"],
@@ -87,12 +79,8 @@ class JavaScriptWriter:
 'use strict';
 
 // ─── PROVIDER CONFIG ──────────────────────────────────────────────────────
-// Each __ENV_KEY__ placeholder is replaced by GitHub Actions at deploy time.
-// Providers whose placeholder is never replaced are skipped at runtime.
-// Priority is determined by the order of the providers list in config.yaml.
 const PROVIDERS = {providers_json};
 
-// Active provider index — advances automatically on failure
 let _providerIdx = 0;
 function getProvider() {{ return PROVIDERS[_providerIdx]; }}
 
@@ -209,7 +197,7 @@ function autoResize() {{
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }}
 
-// ─── SAFETY BANNER — emergency use only ───────────────────────────────────
+// ─── SAFETY BANNER ────────────────────────────────────────────────────────
 function hideBanner() {{
   const el = document.getElementById('safety-banner');
   if (!el) return;
@@ -360,7 +348,7 @@ function addMsg(role, text, opts = {{}}) {{
   container.scrollTop = container.scrollHeight;
 
   if (EVAL.enabled) {{
-    const prev  = EVAL.log.length ? (EVAL.log[EVAL.log.length - 1].chainHash || '') : '';
+    const prev  = EVAL.log.length ? (EVAL.log[EVAL.log.length - 1].chainHash || '') : '') : '';
     const entry = {{
       t: Date.now(), role, len: text.length, emergency: isEmergency,
       referral:   clinicalData?.referral   || null,
@@ -479,17 +467,6 @@ async function send(override) {{
 }}
 
 // ─── AI CALL STACK ────────────────────────────────────────────────────────
-/**
- * callAIWithRetry — outer loop over providers, inner loop over retries.
- *
- * For each provider:
- *   1. Skip if the placeholder was never replaced (no real token).
- *   2. Try up to (maxRetries + 1) times with exponential back-off.
- *   3. On AbortError (timeout) move straight to the next provider — don't retry.
- *   4. On any other error, retry up to maxRetries times, then move on.
- *
- * Throws only when every provider has been exhausted.
- */
 async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
   const errors = [];
 
@@ -497,7 +474,6 @@ async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
     _providerIdx    = pi;
     const provider  = PROVIDERS[pi];
 
-    // Skip providers whose placeholder token was never injected
     if (!provider.token || provider.token.startsWith('__')) {{
       console.warn(`[CDST] Skipping ${{provider.name}} — no token injected`);
       continue;
@@ -509,21 +485,16 @@ async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
       try {{
         const reply = await callAI(controller.signal, provider);
         clearTimeout(timer);
-        if (pi > 0) {{
-          console.info(`[CDST] Fell back to ${{provider.name}} after ${{pi}} failure(s)`);
-        }}
+        if (pi > 0) console.info(`[CDST] Fell back to ${{provider.name}} after ${{pi}} failure(s)`);
         return reply;
       }} catch (err) {{
         clearTimeout(timer);
-
         if (err.name === 'AbortError') {{
-          // Timeout — no point retrying the same provider
           const msg = `${{provider.name}} timed out after ${{timeoutMs / 1000}}s`;
           console.warn(`[CDST] ${{msg}}`);
           errors.push(msg);
           break;
         }}
-
         if (attempt < maxRetries) {{
           const delay = 800 * (attempt + 1);
           console.warn(`[CDST] ${{provider.name}} retry ${{attempt + 1}}/${{maxRetries}}: ${{err.message}}`);
@@ -542,14 +513,12 @@ async function callAIWithRetry(maxRetries = 2, timeoutMs = 20000) {{
   );
 }}
 
-/** Dispatch to the correct API format based on provider.type */
 async function callAI(signal, provider) {{
   return provider.type === 'anthropic'
     ? callAnthropic(signal, provider)
     : callOpenAICompat(signal, provider);
 }}
 
-/** Anthropic Messages API */
 async function callAnthropic(signal, provider) {{
   const messages = history.map(m => ({{
     role:    m.role === 'assistant' ? 'assistant' : 'user',
@@ -578,7 +547,6 @@ async function callAnthropic(signal, provider) {{
   return data.content?.[0]?.text?.trim() || 'No response received.';
 }}
 
-/** OpenAI-compatible API (GitHub Models, OpenAI, Groq, Mistral) */
 async function callOpenAICompat(signal, provider) {{
   const res = await fetch(provider.endpoint, {{
     method: 'POST', signal,
@@ -897,9 +865,38 @@ function clearEmergency() {{
 }}
 
 // ─── SESSION / LOCALE ─────────────────────────────────────────────────────
+
+/**
+ * toggleSidebar — FIXED for desktop + mobile
+ *
+ * DESKTOP (≥1024px):
+ *   Sidebar is an inline flex item. CSS hides it via:
+ *     body.sidebar-collapsed #sidebar {{ width: 0 }}
+ *   So we toggle 'sidebar-collapsed' on <body>.
+ *
+ * MOBILE / TABLET (<1024px):
+ *   Sidebar is a fixed overlay. CSS shows it via:
+ *     #sidebar.open {{ transform: translateX(0) }}
+ *   So we toggle 'open' on #sidebar and 'visible' on the backdrop.
+ */
 function toggleSidebar() {{
-  document.getElementById('sidebar')?.classList.toggle('open');
-  document.getElementById('sidebar-backdrop')?.classList.toggle('visible');
+  const DESKTOP_BP = 1024;
+  const sidebar    = document.getElementById('sidebar');
+  const backdrop   = document.getElementById('sidebar-backdrop');
+  const hamburger  = document.querySelector('button[onclick="toggleSidebar()"]');
+
+  if (window.innerWidth >= DESKTOP_BP) {{
+    // Desktop: width-transition approach
+    document.body.classList.toggle('sidebar-collapsed');
+    const collapsed = document.body.classList.contains('sidebar-collapsed');
+    if (hamburger) hamburger.classList.toggle('sidebar-active', !collapsed);
+  }} else {{
+    // Mobile/tablet: slide-over overlay approach
+    sidebar?.classList.toggle('open');
+    backdrop?.classList.toggle('visible');
+    const open = sidebar?.classList.contains('open');
+    if (hamburger) hamburger.classList.toggle('sidebar-active', !!open);
+  }}
 }}
 
 function switchLocale(locale) {{

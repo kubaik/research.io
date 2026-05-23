@@ -419,28 +419,44 @@ header {{
 /* Emergency button hidden by design — auto-triggers on keyword detection */
 #emergency-btn {{ display: none !important; }}
 
-/* ── MODAL ─────────────────────────────────── */
-#modal-overlay {{ display: none; position: fixed; inset: 0; background: rgba(0,0,0,.40); z-index: 300; align-items: flex-end; justify-content: center; padding: 0; backdrop-filter: blur(3px); }}
+/* ── MODAL ─────────────────────────────────────── */
+#modal-overlay {{
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .40);
+  z-index: 300;
+  /* mobile: sheet rises from bottom */
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  backdrop-filter: blur(3px);
+}}
 #modal-overlay.open {{ display: flex; }}
 .modal {{
-  background: var(--surface); border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-  box-shadow: var(--shadow); width: 100%; max-height: 85dvh; overflow-y: auto;
+  background: var(--surface);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow);
+  width: 100%;
+  max-height: 85dvh;
+  overflow-y: auto;
   animation: sheet-up .25s ease;
   padding-bottom: var(--safe-bottom);
 }}
-@keyframes sheet-up {{ from {{ transform: translateY(60px); opacity: 0; }} to {{ transform: translateY(0); opacity: 1; }} }}
-.modal-header {{ padding: 16px 20px 12px; border-bottom: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--surface); z-index: 1; }}
+@keyframes sheet-up {{
+  from {{ transform: translateY(60px); opacity: 0; }}
+  to   {{ transform: translateY(0);    opacity: 1; }}
+}}
+.modal-header {{
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; background: var(--surface); z-index: 1;
+}}
 .modal-title  {{ font-size: 15px; font-weight: 600; }}
 .modal-close  {{ background: none; border: none; color: var(--muted); cursor: pointer; font-size: 20px; padding: 4px 8px; border-radius: 4px; }}
 .modal-close:active {{ color: var(--text); }}
 .modal-body   {{ padding: 14px 20px 20px; }}
-.protocol-section       {{ margin-bottom: 16px; }}
-.protocol-section-title {{ font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }}
-.protocol-list-item {{ display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }}
-.protocol-list-item:last-child {{ border-bottom: none; }}
-.protocol-bullet        {{ width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; margin-top: 5px; }}
-.protocol-bullet.green  {{ background: var(--accent); }}
-.protocol-bullet.orange {{ background: var(--warning); }}
 
 /* ── EVALUATION PANEL ──────────────────────── */
 #eval-panel {{
@@ -497,6 +513,15 @@ header {{
 strong {{ font-weight: 600; }}
 -webkit-tap-highlight-color: transparent;
 
+/* ── PROTOCOL SECTION ──────────────────────── */
+.protocol-section       {{ margin-bottom: 16px; }}
+.protocol-section-title {{ font-size: 11.5px; font-weight: 600; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 8px; }}
+.protocol-list-item {{ display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border-light); font-size: 13px; }}
+.protocol-list-item:last-child {{ border-bottom: none; }}
+.protocol-bullet        {{ width: 7px; height: 7px; border-radius: 50%; background: var(--danger); flex-shrink: 0; margin-top: 5px; }}
+.protocol-bullet.green  {{ background: var(--accent); }}
+.protocol-bullet.orange {{ background: var(--warning); }}
+
 /* ══════════════════════════════════════════════
    TABLET  ≥ 640px
    ══════════════════════════════════════════════ */
@@ -511,14 +536,21 @@ strong {{ font-weight: 600; }}
   /* Sidebar: still overlay but wider */
   #sidebar {{ width: 280px; padding-top: calc(var(--header-h) + var(--banner-h)); }}
 
-  /* Modal: centred dialog instead of bottom sheet */
-  #modal-overlay {{ align-items: center; padding: 1rem; }}
+  /* Modal: centred dialog on tablet+ — no longer a bottom sheet */
+  #modal-overlay {{
+    align-items: center;
+    padding: 1.5rem;           /* breathing room from viewport edges */
+  }}
   .modal {{
     border-radius: var(--radius-lg);
-    max-width: 540px; max-height: 80dvh;
+    width: min(680px, 100%);   /* wider than the old 540px cap */
+    max-height: 75dvh;
     animation: modal-in .2s ease;
   }}
-  @keyframes modal-in {{ from {{ opacity: 0; transform: scale(.96) translateY(10px); }} to {{ opacity: 1; transform: scale(1) translateY(0); }} }}
+  @keyframes modal-in {{
+    from {{ opacity: 0; transform: scale(.96) translateY(10px); }}
+    to   {{ opacity: 1; transform: scale(1)   translateY(0);    }}
+  }}
 
   /* Eval panel: right-side drawer */
   #eval-panel {{
@@ -573,6 +605,13 @@ strong {{ font-weight: 600; }}
   #eval-panel.open {{
     transform: translateX(0);
     animation: none;
+  }}
+
+  /* Modal: comfortable size on large screens */
+  #modal-overlay {{ padding: 2rem; }}
+  .modal {{
+    width: min(780px, 100%);
+    max-height: 70dvh;
   }}
 
   .message {{ max-width: 82%; }}
